@@ -1,0 +1,40 @@
+
+======================================================================
+Testing BME280 Environmental Sensor
+======================================================================
+ℹ Initializing BME280 at I2C address 0x77...
+ℹ Connecting to sensor...
+✗ Failed to connect to BME280
+ℹ Troubleshooting:
+ℹ   1. Check I2C wiring (SDA, SCL, VCC, GND)
+ℹ   2. Verify sensor is at address 0x77 (or try 0x76)
+ℹ   3. Run: sudo i2cdetect -y 1
+ℹ   4. Check if I2C is enabled: sudo raspi-config
+
+======================================================================
+Testing MPU6050 BED Sensor
+======================================================================
+ℹ Initializing MPU6050 BED at I2C address 0x68...
+ℹ Connecting to sensor...
+✗ Failed to connect to MPU6050 BED
+ℹ Troubleshooting:
+ℹ   1. Check I2C wiring (SDA, SCL, VCC, GND)
+ℹ   2. Verify sensor is at address 0x68
+ℹ   3. Run: sudo i2cdetect -y 1
+ℹ   4. Check if AD0 pin is connected correctly (0x68 if LOW, 0x69 if HIGH)
+
+======================================================================
+Testing MPU6050 BODY Sensor
+======================================================================
+ℹ Initializing MPU6050 BODY at I2C address 0x69...
+ℹ Connecting to sensor...
+✗ Failed to connect to MPU6050 BODY
+ℹ Troubleshooting:
+ℹ   1. Check I2C wiring (SDA, SCL, VCC, GND)
+ℹ   2. Verify sensor is at address 0x69
+ℹ   3. Run: sudo i2cdetect -y 1
+ℹ   4. Check if AD0 pin is connected correctly (0x68 if LOW, 0x69 if HIGH)
+
+======================================================================
+Test Summary
+======================================================================

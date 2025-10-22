@@ -1,0 +1,342 @@
+
+ ▐▛███▜▌   Claude Code v2.0.25
+▝▜█████▛▘  Sonnet 4.5 · Claude Max
+  ▘▘ ▝▝    /home/navair/Desktop/navair-app
+═════════════════════════════════════════════════════════ Conversation compacted · ctrl+o for history ════════════════════════════════════════════════════════
+
+● I'll fix both critical issues now. Let me start by examining the current API responses and then fix the temperature display and card overlap problems.
+
+● Bash(curl -s http://localhost:8000/api/sensors/current | jq '.' | head -50)
+  ⎿  /bin/bash: line 1: jq: command not found
+
+● Bash(curl -s http://localhost:8000/api/print/status | jq '.')
+  ⎿  Error: /bin/bash: line 1: jq: command not found
+
+● Bash(curl -s http://localhost:8000/api/sensors/current)
+  ⎿  {                              
+       "readings": {
+         "bme280_main": {
+     … +148 lines (ctrl+o to expand)
+
+● Bash(curl -s http://localhost:8000/api/print/status)
+  ⎿  {                            
+       "state": "printing",
+       "progress": 80,
+     … +6 lines (ctrl+o to expand)
+
+● Perfect! Now I can see the issues:
+
+  1. Print status API returns no temperature data - just state, progress, times, and job name
+  2. Printer temperature sensor is disconnected (printer API handler not connected)
+  3. BME280 only provides ambient temperature, not nozzle/bed temps
+
+  Let me check the API server to see if there's a temperatures endpoint:
+
+● Read(Navair_Project/navair_additive/navair_additive/communication/api_server.py)
+  ⎿  Read 100 lines
+
+● Search(pattern: "/api/print", path: "Navair_Project/navair_additive/navair_additive/communication/api_server.py", output_mode: "content")
+  ⎿  Found 11 lines (ctrl+o to expand)
+
+● Read(Navair_Project/navair_additive/navair_additive/communication/api_server.py)
+  ⎿  Read 100 lines
+
+● Now I understand the issue. The print status endpoint doesn't include temperature data. I need to:
+
+  1. Add a new API endpoint for printer temperatures
+  2. Update the dashboard to fetch and display temperatures correctly
+  3. Fix the card overlap issue
+
+  Let me create a todo list and fix these issues:
+
+● Let me add a temperatures endpoint to the API server:
+
+● Read(Navair_Project/navair_additive/navair_additive/communication/api_server.py)
+  ⎿  Read 20 lines
+
+● Update(Navair_Project/navair_additive/navair_additive/communication/api_server.py)
+  ⎿  Updated Navair_Project/navair_additive/navair_additive/communication/api_server.py with 24 additions
+       569                        "timestamp": datetime.utcnow().isoformat()
+       570                    }
+       571    
+       572 +          @self.app.get("/api/print/temperatures")
+       573 +          async def get_print_temperatures():
+       574 +              """Get current printer temperatures (nozzle and bed)."""
+       575 +              try:
+       576 +                  if not self.printer.is_connected:
+       577 +                      await self.printer.connect()
+       578 +  
+       579 +                  temperatures = await self.printer.get_temperatures()
+       580 +                  if temperatures:
+       581 +                      return temperatures
+       582 +                  else:
+       583 +                      raise HTTPException(status_code=503, detail="Printer not responding")
+       584 +  
+       585 +              except Exception as e:
+       586 +                  logger.error(f"Error getting printer temperatures: {e}")
+       587 +                  return {
+       588 +                      "nozzle_temp": 0.0,
+       589 +                      "nozzle_target": 0.0,
+       590 +                      "bed_temp": 0.0,
+       591 +                      "bed_target": 0.0,
+       592 +                      "error": str(e),
+       593 +                      "timestamp": datetime.utcnow().isoformat()
+       594 +                  }
+       595 +  
+       596            @self.app.post("/api/controls/emergency_stop")
+       597            async def emergency_stop(user: str = Depends(get_current_user)):
+       598                """Emergency stop - immediately halt printer."""
+
+● Now let me update the dashboard to fetch and display temperatures from the new endpoint:
+
+● Read(Navair_Project/navair_additive/web_dashboard/dashboard.js)
+  ⎿  Read 100 lines
+
+● Let me add a new method to fetch printer temperatures and update the display logic:
+
+● Update(Navair_Project/navair_additive/web_dashboard/dashboard.js)
+  ⎿  Updated Navair_Project/navair_additive/web_dashboard/dashboard.js with 66 additions                                                      
+       572            }
+       573        }
+       574    
+       575 +      async fetchPrinterTemperatures() {
+       576 +          try {
+       577 +              const url = `${this.resolveApiBaseUrl()}/print/temperatures`;
+       578 +              const response = await fetchWithTimeout(url, {}, this.apiTimeoutMs);
+       579 +  
+       580 +              if (!response.ok) {
+       581 +                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+       582 +              }
+       583 +  
+       584 +              const data = await response.json();
+       585 +              this.updatePrinterTemperatures(data);
+       586 +              return data;
+       587 +  
+       588 +          } catch (error) {
+       589 +              console.error('Printer Temperatures API Error:', error);
+       590 +              // Fail silently - temperatures will show N/A
+       591 +              return null;
+       592 +          }
+       593 +      }
+       594 +  
+       595 +      updatePrinterTemperatures(data) {
+       596 +          if (!data) {
+       597 +              this.updateElement('nozzle-temp-value', 'N/A');
+       598 +              this.updateElement('bed-temp-value', 'N/A');
+       599 +              return;
+       600 +          }
+       601 +  
+       602 +          // Update nozzle temperature with target
+       603 +          if (this.isFiniteNumber(data.nozzle_temp)) {
+       604 +              const currentConverted = this.convertTemperature(data.nozzle_temp);
+       605 +              if (this.isFiniteNumber(data.nozzle_target) && data.nozzle_target > 0) {
+       606 +                  const targetConverted = this.convertTemperature(data.nozzle_target);
+       607 +                  this.updateElement('nozzle-temp-value',
+       608 +                      `${currentConverted.toFixed(1)}${this.getTempUnit()} / ${targetConverted.toFixed(0)}${this.getTempUnit()}`);
+       609 +              } else {
+       610 +                  this.updateElement('nozzle-temp-value',
+       611 +                      `${currentConverted.toFixed(1)}${this.getTempUnit()}`);
+       612 +              }
+       613 +          } else {
+       614 +              this.updateElement('nozzle-temp-value', 'N/A');
+       615 +          }
+       616 +  
+       617 +          // Update bed temperature with target
+       618 +          if (this.isFiniteNumber(data.bed_temp)) {
+       619 +              const currentConverted = this.convertTemperature(data.bed_temp);
+       620 +              if (this.isFiniteNumber(data.bed_target) && data.bed_target > 0) {
+       621 +                  const targetConverted = this.convertTemperature(data.bed_target);
+       622 +                  this.updateElement('bed-temp-value',
+       623 +                      `${currentConverted.toFixed(1)}${this.getTempUnit()} / ${targetConverted.toFixed(0)}${this.getTempUnit()}`);
+       624 +              } else {
+       625 +                  this.updateElement('bed-temp-value',
+       626 +                      `${currentConverted.toFixed(1)}${this.getTempUnit()}`);
+       627 +              }
+       628 +          } else {
+       629 +              this.updateElement('bed-temp-value', 'N/A');
+       630 +          }
+       631 +  
+       632 +          // Store for other uses
+       633 +          this.lastTemperatures = {
+       634 +              nozzle: data.nozzle_temp,
+       635 +              nozzle_target: data.nozzle_target,
+       636 +              bed: data.bed_temp,
+       637 +              bed_target: data.bed_target
+       638 +          };
+       639 +      }
+       640 +  
+       641        updateSensorData(data) {
+       642            console.log('Received sensor data:', data);
+       643    
+
+● Now let me remove the old temperature logic from updateSensorData since we're now fetching temperatures separately:
+
+● Read(Navair_Project/navair_additive/web_dashboard/dashboard.js)
+  ⎿  Read 50 lines
+
+● Update(Navair_Project/navair_additive/web_dashboard/dashboard.js)
+  ⎿  Updated Navair_Project/navair_additive/web_dashboard/dashboard.js with 2 additions and 25 removals             
+       648    
+       649            const readings = data.readings;
+       650    
+       651 -          let tempReading = null;
+       652 -          if (readings.printer_temp && readings.printer_temp.value !== undefined) {
+       653 -              tempReading = readings.printer_temp.value;
+       654 -          } else if (readings.printer_temperature && readings.printer_temperature.value !== undefined) {
+       655 -              tempReading = readings.printer_temperature.value;
+       656 -          }
+       651 +          // Printer temperatures are now fetched separately via fetchPrinterTemperatures()
+       652 +          // This keeps sensor data and printer data cleanly separated
+       653    
+       654 -          const temperatures = this.parsePrinterTemperatures(tempReading);
+       655 -  
+       656 -          if (this.isFiniteNumber(temperatures.nozzle)) {
+       657 -              const converted = this.convertTemperature(temperatures.nozzle);
+       658 -              this.updateElement('nozzle-temp-value', `${converted.toFixed(1)}${this.getTempUnit()}`);
+       659 -          } else {
+       660 -              this.updateElement('nozzle-temp-value', 'N/A');
+       661 -          }
+       662 -  
+       663 -          if (this.isFiniteNumber(temperatures.bed)) {
+       664 -              const converted = this.convertTemperature(temperatures.bed);
+       665 -              this.updateElement('bed-temp-value', `${converted.toFixed(1)}${this.getTempUnit()}`);
+       666 -          } else {
+       667 -              this.updateElement('bed-temp-value', 'N/A');
+       668 -          }
+       669 -  
+       670 -          // Store raw temperatures for other uses
+       671 -          this.lastTemperatures = temperatures;
+       672 -  
+       654            let envReading = null;
+       655            if (readings.bme280_main && readings.bme280_main.value !== undefined) {
+       656                envReading = readings.bme280_main.value;
+
+● Now I need to add the temperature fetch to the polling intervals. Let me find where the polling is set up:
+
+● Search(pattern: "pollingHandles", path: "Navair_Project/navair_additive/web_dashboard/dashboard.js", output_mode: "content")
+  ⎿  Found 47 lines (ctrl+o to expand)
+
+● Update(Navair_Project/navair_additive/web_dashboard/dashboard.js)
+  ⎿  Updated Navair_Project/navair_additive/web_dashboard/dashboard.js with 1 addition
+       1060    
+       1061            this.pollingHandles.print = setInterval(() => {
+       1062                this.fetchPrintStatus();
+       1063 +              this.fetchPrinterTemperatures();
+       1064            }, this.printStatusIntervalMs);
+       1065    
+       1066            this.hasInitializedPolling = true;
+
+● Update(Navair_Project/navair_additive/web_dashboard/dashboard.js)
+  ⎿  Updated Navair_Project/navair_additive/web_dashboard/dashboard.js with 1 addition
+       1962    
+       1963        dashboard.pollingHandles.print = setInterval(() => {
+       1964            dashboard.fetchPrintStatus();
+       1965 +          dashboard.fetchPrinterTemperatures();
+       1966        }, dashboard.printStatusIntervalMs);
+       1967    
+       1968        // If auto-export is enabled, schedule periodic exports
+
+● Now let me fix the card overlap issue. Let me find the print job status and ML prediction sections in the HTML:
+
+● Search(pattern: "print.*job.*status", path: "Navair_Project/navair_additive/web_dashboard/index.html", output_mode: "content")
+  ⎿  Found 13 lines (ctrl+o to expand)
+
+● Read(Navair_Project/navair_additive/web_dashboard/index.html)
+  ⎿  Read 50 lines
+
+● Search(pattern: "\\.metric-grid", path: "Navair_Project/navair_additive/web_dashboard/index.html", output_mode: "content")
+  ⎿  Found 0 lines 
+
+● Search(pattern: "metric-grid", path: "Navair_Project/navair_additive/web_dashboard/index.html", output_mode: "content")
+  ⎿  Found 191 lines (ctrl+o to expand)
+
+● Search(pattern: "\\.card {", path: "Navair_Project/navair_additive/web_dashboard/index.html", output_mode: "content")
+  ⎿  Found 0 lines 
+
+● Read(Navair_Project/navair_additive/web_dashboard/index.html)
+  ⎿  Read 80 lines
+
+● Search(pattern: "wide-card", path: "Navair_Project/navair_additive/web_dashboard/index.html", output_mode: "content")
+  ⎿  Found 47 lines (ctrl+o to expand)
+
+● Perfect! I found the issue. The Print Job Status card has 5 metric items in a 2-column grid, which creates extra height and can cause overlap. The
+  solution is to make it a wide-card so it spans the full width and has more room. Let me fix this:
+
+● Update(Navair_Project/navair_additive/web_dashboard/index.html)
+  ⎿  Updated Navair_Project/navair_additive/web_dashboard/index.html with 1 addition and 1 removal
+       606                </div>
+       607    
+       608                <!-- Print Job Status -->
+       609 -              <div class="card">
+       609 +              <div class="card wide-card">
+       610                    <h3><i class="fas fa-print"></i> Print Job Status</h3>
+       611                    <div class="metric-grid">
+       612                        <div class="metric-item">
+
+● Now let me also add a custom style to make the Print Job Status use more columns so the 5 items display better:
+
+● Update(Navair_Project/navair_additive/web_dashboard/index.html)
+  ⎿  Updated Navair_Project/navair_additive/web_dashboard/index.html with 4 additions 
+       315                grid-column: 1 / -1;
+       316            }
+       317    
+       318 +          .wide-card .metric-grid {
+       319 +              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+       320 +          }
+       321 +  
+       322            .loading {
+       323                text-align: center;
+       324                color: #666;
+
+● I'll stop all the running services now:
+
+● Bash(pkill -f "python3 -m navair_additive.main")
+  ⎿  Error: Error
+
+● Kill Shell(Kill shell: 509474)
+  ⎿  Error: Shell 509474 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: a90882)
+  ⎿  Error: Shell a90882 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 647afd)
+  ⎿  Error: Shell 647afd is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 15c376)
+  ⎿  Error: Shell 15c376 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: bb3476)
+  ⎿  Error: Shell bb3476 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: f3ba2c)
+  ⎿  Error: Shell f3ba2c is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 21c4ef)
+  ⎿  Error: Shell 21c4ef is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 2932b0)
+  ⎿  Error: Shell 2932b0 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: b69b80)
+  ⎿  Error: Shell b69b80 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 2f574c)
+  ⎿  Error: Shell 2f574c is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 2d7a4f)
+  ⎿  Error: Shell 2d7a4f is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 6822c6)
+  ⎿  Error: Shell 6822c6 is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 103dcd)
+  ⎿  Error: Shell 103dcd is not running, so cannot be killed (status: killed)
+
+● Kill Shell(Kill shell: 47490e)
+  ⎿  Error: Shell 47490e is not running, so cannot be killed (status: failed)
+
+● Bash(ps aux | grep "python3 -m navair_additive" | grep -v grep)
+  ⎿  No matches found
+
+
+
