@@ -1,0 +1,533 @@
+"""Printer API sensor handler for NAVAIR_ADDITIVE system."""
+
+import asyncio
+import logging
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Any, Union
+
+try:
+    import httpx
+    HAS_HTTPX = True
+except ImportError:
+    HAS_HTTPX = False
+
+from ..data.models import SensorType, QualityFlag
+from .base_sensor import BaseSensor, SensorReading, SensorStatus
+
+logger = logging.getLogger(__name__)
+
+
+class PrinterAPIHandler(BaseSensor):
+    """Handler for printer API sensors (temperature, position, flow)."""
+    
+    def __init__(
+        self,
+        sensor_id: str,
+        sensor_type: SensorType,
+        api_url: str,
+        polling_rate: float = 5.0,  # 5Hz for temp, 10Hz for position as per spec
+        **kwargs
+    ):
+        """
+        Initialize printer API sensor handler.
+        
+        Args:
+            sensor_id: Unique sensor identifier
+            sensor_type: PRINTER_TEMP, PRINTER_POSITION, or PRINTER_FLOW
+            api_url: Base URL for printer API
+            polling_rate: Polling frequency in Hz
+            **kwargs: Additional configuration
+        """
+        valid_types = [SensorType.PRINTER_TEMP, SensorType.PRINTER_POSITION, SensorType.PRINTER_FLOW]
+        if sensor_type not in valid_types:
+            raise ValueError(f"Invalid sensor type for printer API: {sensor_type}")
+        
+        super().__init__(
+            sensor_id=sensor_id,
+            sensor_type=sensor_type,
+            polling_rate=polling_rate,
+            **kwargs
+        )
+        
+        self.api_url = api_url.rstrip('/')
+        self.timeout = kwargs.get('timeout', 5.0)
+        self.auth_enabled = kwargs.get('auth_enabled', False)
+        self.username = kwargs.get('username', '')
+        self.password = kwargs.get('password', '')
+        
+        # HTTP client
+        self._client: Optional[httpx.AsyncClient] = None
+        
+        # API endpoints for different sensor types
+        self._endpoints = {
+            SensorType.PRINTER_TEMP: '/api/v1/printer/temperature',
+            SensorType.PRINTER_POSITION: '/api/v1/printer/position',
+            SensorType.PRINTER_FLOW: '/api/v1/printer/flow'
+        }
+        
+        # Data limits for quality checking
+        self._limits = {
+            SensorType.PRINTER_TEMP: (0, 500),    # °C
+            SensorType.PRINTER_POSITION: (-50, 350),  # mm
+            SensorType.PRINTER_FLOW: (0, 200)     # %
+        }
+        
+        logger.info(f"Initialized printer API handler ({sensor_type.value}) for {api_url}")
+    
+    async def _connect(self) -> bool:
+        """Connect to printer API."""
+        if not HAS_HTTPX:
+            logger.error("httpx not available. Install httpx package")
+            return False
+        
+        try:
+            # Configure client
+            auth = None
+            if self.auth_enabled and self.username and self.password:
+                auth = httpx.DigestAuth(self.username, self.password)
+            
+            self._client = httpx.AsyncClient(
+                base_url=self.api_url,
+                timeout=self.timeout,
+                auth=auth,
+                headers={'User-Agent': 'NAVAIR-Additive/1.0'}
+            )
+            
+            # Test connection
+            response = await self._client.get('/api/v1/status')
+            if response.status_code == 200:
+                logger.info(f"Connected to printer API at {self.api_url}")
+                return True
+            else:
+                logger.error(f"Printer API returned status {response.status_code}")
+                return False
+            
+        except Exception as e:
+            logger.error(f"Failed to connect to printer API: {e}")
+            await self._cleanup_connection()
+            return False
+    
+    async def _disconnect(self) -> None:
+        """Disconnect from printer API."""
+        await self._cleanup_connection()
+        logger.info("Disconnected from printer API")
+    
+    async def _cleanup_connection(self) -> None:
+        """Clean up HTTP client resources."""
+        try:
+            if self._client:
+                await self._client.aclose()
+        except Exception as e:
+            logger.warning(f"Error cleaning up printer API connection: {e}")
+        finally:
+            self._client = None
+    
+    async def _read_data(self) -> Optional[SensorReading]:
+        """Read data from printer API."""
+        if not self._client:
+            logger.error("Printer API not connected")
+            return None
+        
+        endpoint = self._endpoints.get(self.sensor_type)
+        if not endpoint:
+            logger.error(f"No endpoint defined for sensor type {self.sensor_type}")
+            return None
+        
+        try:
+            timestamp = datetime.utcnow()
+            response = await self._client.get(endpoint)
+            
+            if response.status_code != 200:
+                logger.warning(f"API returned status {response.status_code} for {endpoint}")
+                return None
+            
+            data = response.json()
+            processed_data, quality_flag, metadata = self._process_api_response(data, timestamp)
+            
+            if processed_data is None:
+                return None
+            
+            return SensorReading(
+                sensor_type=self.sensor_type,
+                sensor_id=self.sensor_id,
+                value=processed_data,
+                unit=self._get_unit(),
+                quality_flag=quality_flag,
+                timestamp=timestamp,
+                metadata=metadata
+            )
+            
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout reading from printer API: {endpoint}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON response from printer API: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error reading from printer API: {e}")
+            return None
+    
+    def _process_api_response(
+        self, 
+        data: Dict[str, Any], 
+        timestamp: datetime
+    ) -> tuple[Any, QualityFlag, Dict]:
+        """Process API response data based on sensor type."""
+        
+        quality_flag = QualityFlag.GOOD
+        metadata = {
+            'endpoint': self._endpoints[self.sensor_type],
+            'api_timestamp': data.get('timestamp'),
+            'sensor_type': self.sensor_type.value
+        }
+        
+        try:
+            if self.sensor_type == SensorType.PRINTER_TEMP:
+                return self._process_temperature_data(data, quality_flag, metadata)
+                
+            elif self.sensor_type == SensorType.PRINTER_POSITION:
+                return self._process_position_data(data, quality_flag, metadata)
+                
+            elif self.sensor_type == SensorType.PRINTER_FLOW:
+                return self._process_flow_data(data, quality_flag, metadata)
+            
+            else:
+                logger.error(f"Unknown sensor type for processing: {self.sensor_type}")
+                return None, QualityFlag.INVALID, metadata
+                
+        except Exception as e:
+            logger.error(f"Error processing API response: {e}")
+            return None, QualityFlag.INVALID, metadata
+    
+    def _process_temperature_data(
+        self, 
+        data: Dict[str, Any], 
+        quality_flag: QualityFlag, 
+        metadata: Dict
+    ) -> tuple[Any, QualityFlag, Dict]:
+        """Process temperature data from API response."""
+        
+        # Extract temperature readings
+        temps = data.get('temperatures', {})
+        
+        if not temps:
+            logger.warning("No temperature data in API response")
+            return None, QualityFlag.INVALID, metadata
+        
+        # Collect all temperature readings
+        temp_readings = {}
+        
+        for temp_name, temp_data in temps.items():
+            current_temp = temp_data.get('current', 0)
+            target_temp = temp_data.get('target', 0)
+            
+            temp_readings[temp_name] = {
+                'current': current_temp,
+                'target': target_temp,
+                'deviation': abs(current_temp - target_temp) if target_temp > 0 else 0
+            }
+            
+            # Check temperature limits
+            if not self._check_value_limits(current_temp):
+                quality_flag = QualityFlag.WARNING
+                metadata['warning'] = f"{temp_name} temperature {current_temp}°C outside limits"
+        
+        # Check for temperature deviations
+        max_deviation = max(
+            (reading['deviation'] for reading in temp_readings.values()),
+            default=0
+        )
+        
+        if max_deviation > 10:  # >10°C deviation
+            quality_flag = QualityFlag.POOR
+            metadata['alert'] = f"Large temperature deviation: {max_deviation:.1f}°C"
+        elif max_deviation > 5:  # >5°C deviation
+            if quality_flag == QualityFlag.GOOD:
+                quality_flag = QualityFlag.WARNING
+            metadata['warning'] = f"Temperature deviation: {max_deviation:.1f}°C"
+        
+        metadata.update({
+            'temperature_count': len(temp_readings),
+            'max_deviation': max_deviation
+        })
+        
+        # Return single value or multi-value based on count
+        if len(temp_readings) == 1:
+            temp_name = list(temp_readings.keys())[0]
+            return temp_readings[temp_name]['current'], quality_flag, metadata
+        else:
+            return temp_readings, quality_flag, metadata
+    
+    def _process_position_data(
+        self, 
+        data: Dict[str, Any], 
+        quality_flag: QualityFlag, 
+        metadata: Dict
+    ) -> tuple[Any, QualityFlag, Dict]:
+        """Process position data from API response."""
+        
+        position = data.get('position', {})
+        
+        if not position:
+            logger.warning("No position data in API response")
+            return None, QualityFlag.INVALID, metadata
+        
+        # Extract X, Y, Z coordinates
+        coords = {}
+        for axis in ['x', 'y', 'z']:
+            coord_value = position.get(axis)
+            if coord_value is not None:
+                coords[axis] = float(coord_value)
+                
+                # Check position limits
+                if not self._check_value_limits(coord_value):
+                    quality_flag = QualityFlag.WARNING
+                    metadata['warning'] = f"{axis.upper()} position {coord_value}mm outside limits"
+        
+        if not coords:
+            logger.warning("No valid coordinates in position data")
+            return None, QualityFlag.INVALID, metadata
+        
+        # Add motion state if available
+        motion_state = data.get('motion_state', 'unknown')
+        metadata.update({
+            'motion_state': motion_state,
+            'coordinate_count': len(coords)
+        })
+        
+        # Add extruder position if available
+        if 'e' in position:
+            coords['e'] = float(position['e'])
+        
+        return coords, quality_flag, metadata
+    
+    def _process_flow_data(
+        self, 
+        data: Dict[str, Any], 
+        quality_flag: QualityFlag, 
+        metadata: Dict
+    ) -> tuple[Any, QualityFlag, Dict]:
+        """Process flow data from API response."""
+        
+        flow_data = data.get('flow', {})
+        
+        if not flow_data:
+            logger.warning("No flow data in API response")
+            return None, QualityFlag.INVALID, metadata
+        
+        # Extract flow rate and related metrics
+        flow_rate = flow_data.get('rate', 0)
+        flow_target = flow_data.get('target', 100)  # Default 100%
+        flow_deviation = abs(flow_rate - flow_target)
+        
+        # Check flow limits
+        if not self._check_value_limits(flow_rate):
+            quality_flag = QualityFlag.WARNING
+            metadata['warning'] = f"Flow rate {flow_rate}% outside limits"
+        
+        # Check flow deviation
+        if flow_deviation > 15:  # >15% deviation
+            quality_flag = QualityFlag.POOR
+            metadata['alert'] = f"Large flow deviation: {flow_deviation:.1f}%"
+        elif flow_deviation > 5:  # >5% deviation
+            if quality_flag == QualityFlag.GOOD:
+                quality_flag = QualityFlag.WARNING
+            metadata['warning'] = f"Flow deviation: {flow_deviation:.1f}%"
+        
+        # Additional flow metrics
+        flow_result = {
+            'rate': flow_rate,
+            'target': flow_target,
+            'deviation': flow_deviation
+        }
+        
+        # Add pressure if available
+        if 'pressure' in flow_data:
+            flow_result['pressure'] = float(flow_data['pressure'])
+        
+        # Add volume flow if available
+        if 'volume_rate' in flow_data:
+            flow_result['volume_rate'] = float(flow_data['volume_rate'])
+        
+        metadata.update({
+            'flow_metrics': list(flow_result.keys()),
+            'deviation_percent': flow_deviation
+        })
+        
+        return flow_result if len(flow_result) > 3 else flow_rate, quality_flag, metadata
+    
+    def _check_value_limits(self, value: float) -> bool:
+        """Check if value is within acceptable limits for sensor type."""
+        limits = self._limits.get(self.sensor_type)
+        if limits:
+            return limits[0] <= value <= limits[1]
+        return True
+    
+    def _get_unit(self) -> str:
+        """Get unit for sensor type."""
+        units = {
+            SensorType.PRINTER_TEMP: '°C',
+            SensorType.PRINTER_POSITION: 'mm',
+            SensorType.PRINTER_FLOW: '%'
+        }
+        return units.get(self.sensor_type, '')
+    
+    async def _health_check(self) -> bool:
+        """Perform printer API health check."""
+        if not self._client:
+            return False
+        
+        try:
+            # Check API status endpoint
+            response = await self._client.get('/api/v1/status')
+            
+            if response.status_code != 200:
+                logger.warning(f"API health check failed: status {response.status_code}")
+                return False
+            
+            status_data = response.json()
+            
+            # Check printer status
+            printer_state = status_data.get('state', 'unknown')
+            if printer_state in ['error', 'offline']:
+                logger.warning(f"Printer in unhealthy state: {printer_state}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Printer API health check error: {e}")
+            return False
+    
+    async def _calibrate(self, **kwargs) -> bool:
+        """Printer API sensors don't require calibration."""
+        logger.info("Printer API sensors do not require calibration")
+        return True
+    
+    async def get_printer_status(self) -> Optional[Dict[str, Any]]:
+        """Get overall printer status from API."""
+        if not self._client:
+            return None
+        
+        try:
+            response = await self._client.get('/api/v1/status')
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            logger.error(f"Error getting printer status: {e}")
+        
+        return None
+    
+    async def get_print_job_info(self) -> Optional[Dict[str, Any]]:
+        """Get current print job information from API."""
+        if not self._client:
+            return None
+        
+        try:
+            response = await self._client.get('/api/v1/job')
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            logger.error(f"Error getting print job info: {e}")
+        
+        return None
+    
+    async def send_gcode(self, gcode: str) -> bool:
+        """Send G-code command to printer."""
+        if not self._client:
+            return False
+        
+        try:
+            response = await self._client.post(
+                '/api/v1/printer/command',
+                json={'command': gcode}
+            )
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Error sending G-code: {e}")
+            return False
+    
+    async def emergency_stop(self) -> bool:
+        """Send emergency stop command to printer."""
+        logger.warning("Sending emergency stop to printer")
+        return await self.send_gcode('M112')  # Emergency stop G-code
+    
+    async def pause_print(self) -> bool:
+        """Pause current print job."""
+        if not self._client:
+            return False
+        
+        try:
+            response = await self._client.post('/api/v1/job/pause')
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Error pausing print: {e}")
+            return False
+    
+    async def resume_print(self) -> bool:
+        """Resume paused print job."""
+        if not self._client:
+            return False
+        
+        try:
+            response = await self._client.post('/api/v1/job/resume')
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Error resuming print: {e}")
+            return False
+    
+    async def abort_print(self) -> bool:
+        """Abort current print job."""
+        logger.warning("Aborting current print job")
+        
+        if not self._client:
+            return False
+        
+        try:
+            response = await self._client.post('/api/v1/job/cancel')
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Error aborting print: {e}")
+            return False
+    
+    async def get_sensor_info(self) -> Dict[str, Any]:
+        """Get sensor information and status."""
+        info = {
+            'sensor_type': self.sensor_type.value,
+            'sensor_id': self.sensor_id,
+            'api_url': self.api_url,
+            'endpoint': self._endpoints.get(self.sensor_type, 'unknown'),
+            'status': self.status.value,
+            'connected': self.is_connected,
+            'polling_rate': self.polling_rate,
+            'timeout': self.timeout,
+            'auth_enabled': self.auth_enabled,
+            'limits': self._limits.get(self.sensor_type, (0, 0))
+        }
+        
+        if self.is_connected:
+            try:
+                # Get current printer status
+                printer_status = await self.get_printer_status()
+                if printer_status:
+                    info['printer_status'] = printer_status
+                
+                # Get current print job
+                job_info = await self.get_print_job_info()
+                if job_info:
+                    info['print_job'] = job_info
+                
+                # Get test reading
+                test_reading = await self._read_data()
+                if test_reading:
+                    info['last_reading'] = test_reading.to_dict()
+                    
+            except Exception as e:
+                info['info_error'] = str(e)
+        
+        return info

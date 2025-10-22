@@ -1,0 +1,274 @@
+#!/bin/bash
+
+# NAVAIR_ADDITIVE Installation Script
+# This script sets up the complete NAVAIR_ADDITIVE system on Raspberry Pi
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+INSTALL_DIR="/opt/navair_additive"
+SERVICE_USER="navair"
+VENV_DIR="$INSTALL_DIR/venv"
+LOG_DIR="/var/log/navair_additive"
+DATA_DIR="/var/lib/navair_additive"
+
+echo -e "${BLUE}NAVAIR_ADDITIVE Installation Starting...${NC}"
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${RED}This script must be run as root (use sudo)${NC}"
+   exit 1
+fi
+
+# Check if running on Raspberry Pi
+if ! grep -q "Raspberry Pi" /proc/cpuinfo; then
+    echo -e "${YELLOW}Warning: This doesn't appear to be a Raspberry Pi${NC}"
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+# Update system packages
+echo -e "${BLUE}Updating system packages...${NC}"
+apt update && apt upgrade -y
+
+# Install system dependencies
+echo -e "${BLUE}Installing system dependencies...${NC}"
+apt install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    build-essential \
+    git \
+    curl \
+    wget \
+    nginx \
+    sqlite3 \
+    i2c-tools \
+    python3-smbus \
+    python3-rpi.gpio \
+    nodejs \
+    npm \
+    arduino-cli \
+    avrdude \
+    screen \
+    htop \
+    supervisor
+
+# Create service user
+echo -e "${BLUE}Creating service user...${NC}"
+if ! id "$SERVICE_USER" &>/dev/null; then
+    useradd -r -m -s /bin/bash "$SERVICE_USER"
+    usermod -a -G i2c,spi,gpio,dialout "$SERVICE_USER"
+fi
+
+# Create directories
+echo -e "${BLUE}Creating directories...${NC}"
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$LOG_DIR"
+mkdir -p "$DATA_DIR"
+mkdir -p "$DATA_DIR/models"
+mkdir -p "$DATA_DIR/database"
+mkdir -p "$DATA_DIR/calibration"
+
+# Copy application files
+echo -e "${BLUE}Installing application files...${NC}"
+cp -r . "$INSTALL_DIR/"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$LOG_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
+
+# Create Python virtual environment
+echo -e "${BLUE}Creating Python virtual environment...${NC}"
+sudo -u "$SERVICE_USER" python3 -m venv "$VENV_DIR"
+sudo -u "$SERVICE_USER" "$VENV_DIR/bin/pip" install --upgrade pip
+
+# Install Python dependencies
+echo -e "${BLUE}Installing Python dependencies...${NC}"
+sudo -u "$SERVICE_USER" "$VENV_DIR/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
+
+# Enable I2C and SPI
+echo -e "${BLUE}Enabling I2C and SPI interfaces...${NC}"
+raspi-config nonint do_i2c 0
+raspi-config nonint do_spi 0
+
+# Configure Arduino CLI
+echo -e "${BLUE}Configuring Arduino CLI...${NC}"
+sudo -u "$SERVICE_USER" arduino-cli core update-index
+sudo -u "$SERVICE_USER" arduino-cli core install arduino:avr
+
+# Configure nginx reverse proxy
+echo -e "${BLUE}Configuring nginx...${NC}"
+cat > /etc/nginx/sites-available/navair_additive << 'EOF'
+server {
+    listen 8080 default_server;
+    server_name _;
+
+    # Web dashboard - serve directly from FastAPI
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # WebSocket endpoints
+    location /ws {
+        proxy_pass http://127.0.0.1:8000/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+}
+EOF
+
+# Enable nginx site
+ln -sf /etc/nginx/sites-available/navair_additive /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl restart nginx
+
+# Copy systemd service files
+echo -e "${BLUE}Installing systemd services...${NC}"
+cp scripts/systemd/*.service /etc/systemd/system/
+
+# Reload systemd and enable services
+systemctl daemon-reload
+
+# Create environment file
+cat > /etc/default/navair_additive << EOF
+# NAVAIR_ADDITIVE Environment Configuration
+NAVAIR_INSTALL_DIR=$INSTALL_DIR
+NAVAIR_VENV_DIR=$VENV_DIR
+NAVAIR_LOG_DIR=$LOG_DIR
+NAVAIR_DATA_DIR=$DATA_DIR
+NAVAIR_USER=$SERVICE_USER
+PYTHONPATH=$INSTALL_DIR
+EOF
+
+# Generate initial configuration
+echo -e "${BLUE}Generating initial configuration...${NC}"
+sudo -u "$SERVICE_USER" "$VENV_DIR/bin/python" "$INSTALL_DIR/scripts/generate_config.py"
+
+# Initialize database
+echo -e "${BLUE}Initializing database...${NC}"
+sudo -u "$SERVICE_USER" "$VENV_DIR/bin/python" "$INSTALL_DIR/scripts/init_database.py"
+
+# Enable and start services
+echo -e "${BLUE}Enabling and starting services...${NC}"
+systemctl enable navair-api-server
+systemctl enable navair-data-collector
+systemctl enable navair-ml-processor
+systemctl enable nginx
+
+# Start services
+systemctl start navair-api-server
+systemctl start navair-data-collector
+systemctl start navair-ml-processor
+systemctl start nginx
+
+# Wait for services to start
+sleep 10
+
+# Check service status
+echo -e "${BLUE}Checking service status...${NC}"
+services=("navair-api-server" "navair-data-collector" "navair-ml-processor" "nginx")
+for service in "${services[@]}"; do
+    if systemctl is-active --quiet "$service"; then
+        echo -e "${GREEN}✓ $service is running${NC}"
+    else
+        echo -e "${RED}✗ $service failed to start${NC}"
+        systemctl status "$service" --no-pager -l
+    fi
+done
+
+# Create desktop shortcuts
+if [ -d "/home/pi/Desktop" ]; then
+    echo -e "${BLUE}Creating desktop shortcuts...${NC}"
+    cat > /home/pi/Desktop/NAVAIR_Monitor.desktop << EOF
+[Desktop Entry]
+Name=NAVAIR Monitor
+Comment=Open NAVAIR Additive Manufacturing Monitor
+Icon=applications-internet
+Exec=chromium-browser --kiosk http://localhost:8080
+Type=Application
+Encoding=UTF-8
+Terminal=false
+Categories=Network;
+EOF
+    chown pi:pi /home/pi/Desktop/NAVAIR_Monitor.desktop
+    chmod +x /home/pi/Desktop/NAVAIR_Monitor.desktop
+fi
+
+# Final system configuration
+echo -e "${BLUE}Applying final system configuration...${NC}"
+
+# Configure logrotate
+cat > /etc/logrotate.d/navair_additive << 'EOF'
+/var/log/navair_additive/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 navair navair
+    postrotate
+        systemctl reload navair-api-server navair-data-collector navair-ml-processor 2>/dev/null || true
+    endscript
+}
+EOF
+
+# Configure automatic startup (optional kiosk mode)
+echo -e "${YELLOW}Would you like to enable kiosk mode (auto-start browser on boot)? (y/N):${NC}"
+read -p "" -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    cat >> /etc/xdg/lxsession/LXDE-pi/autostart << 'EOF'
+
+# NAVAIR_ADDITIVE Kiosk Mode
+@chromium-browser --kiosk --disable-infobars --disable-session-crashed-bubble http://localhost:8080
+@unclutter -idle 1
+EOF
+    echo -e "${GREEN}Kiosk mode enabled${NC}"
+fi
+
+echo -e "${GREEN}===============================================${NC}"
+echo -e "${GREEN}NAVAIR_ADDITIVE Installation Complete!${NC}"
+echo -e "${GREEN}===============================================${NC}"
+echo ""
+echo -e "${BLUE}Access the system at:${NC}"
+echo -e "  Dashboard: ${GREEN}http://$(hostname -I | awk '{print $1}'):8080${NC}"
+echo -e "  API Docs:  ${GREEN}http://$(hostname -I | awk '{print $1}'):8080/api/docs${NC}"
+echo ""
+echo -e "${BLUE}Service Management:${NC}"
+echo -e "  Status: ${YELLOW}sudo systemctl status navair-*${NC}"
+echo -e "  Logs:   ${YELLOW}sudo journalctl -u navair-api-server -f${NC}"
+echo -e "  Restart: ${YELLOW}sudo systemctl restart navair-*${NC}"
+echo ""
+echo -e "${BLUE}Configuration Files:${NC}"
+echo -e "  Main Config: ${YELLOW}$DATA_DIR/config/settings.json${NC}"
+echo -e "  Logs: ${YELLOW}$LOG_DIR/${NC}"
+echo -e "  Database: ${YELLOW}$DATA_DIR/database/navair.db${NC}"
+echo ""
+echo -e "${YELLOW}Reboot recommended to ensure all hardware interfaces are properly initialized.${NC}"
+echo -e "${BLUE}Run 'sudo reboot' when ready.${NC}"

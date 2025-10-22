@@ -1,0 +1,83 @@
+[ERROR] Failed to save config with lock: Error: ENOENT: no such file or directory, lstat '/home/navair/.claude.json'
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.23558.1760645846567
+[DEBUG] Setting permissions for new file: 600
+[DEBUG] Temp file written successfully, size: 103 bytes
+[DEBUG] Renaming /home/navair/.claude.json.tmp.23558.1760645846567 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.23558.1760645846578
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 183 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.23558.1760645846578 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.23558.1760645846592
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 220 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.23558.1760645846592 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] >>>>> getSkillsIfEnabled() CALLED <<<<<
+[DEBUG] ENABLE_SKILLS value: true, type: boolean
+[DEBUG] ENABLE_SKILLS check passed, loading skills...
+[DEBUG] Loading skills from directories: managed=/etc/claude-code/.claude/skills, user=/home/navair/.claude/skills, project=/home/navair/.claude/skills
+[DEBUG] >>>>> getPluginSkills CALLED <<<<<
+[DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+[DEBUG] Loaded 0 skills total (managed: 0, user: 0, project: 0)
+[DEBUG] getPluginSkills: Processing 0 enabled plugins
+[DEBUG] Total plugin skills loaded: 0
+[DEBUG] Total plugin commands loaded: 0
+[DEBUG] Registered 0 hooks from 0 plugins
+[DEBUG] getSkillsIfEnabled returning: 0 skill dir commands, 0 plugin skills
+[DEBUG] Creating shell snapshot for bash (/bin/bash)
+[DEBUG] Looking for shell config file: /home/navair/.bashrc
+[DEBUG] Snapshots directory: /home/navair/.claude/shell-snapshots
+[DEBUG] Creating snapshot at: /home/navair/.claude/shell-snapshots/snapshot-bash-1760645846686-7b3zjp.sh
+[DEBUG] Shell binary exists: true
+[DEBUG] Execution timeout: 10000ms
+[DEBUG] Writing to temp file: /home/navair/.claude/todos/9ba319f2-91b2-48ad-92f9-9004f3b79836-agent-9ba319f2-91b2-48ad-92f9-9004f3b79836.json.tmp.23558.1760645846716
+[DEBUG] Temp file written successfully, size: 2 bytes
+[DEBUG] Renaming /home/navair/.claude/todos/9ba319f2-91b2-48ad-92f9-9004f3b79836-agent-9ba319f2-91b2-48ad-92f9-9004f3b79836.json.tmp.23558.1760645846716 to /home/navair/.claude/todos/9ba319f2-91b2-48ad-92f9-9004f3b79836-agent-9ba319f2-91b2-48ad-92f9-9004f3b79836.json
+[DEBUG] File /home/navair/.claude/todos/9ba319f2-91b2-48ad-92f9-9004f3b79836-agent-9ba319f2-91b2-48ad-92f9-9004f3b79836.json written atomically
+[DEBUG] Install: Starting installation process (force=false, target=undefined)
+[DEBUG] Install: Calling installLatest(force=true, target=undefined, forceReinstall=false)
+[DEBUG] Shell snapshot created successfully (1704 bytes)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.23558.1760645846930
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 30875 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.23558.1760645846930 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.23558.1760645846941
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 30935 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.23558.1760645846941 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[ERROR] Error streaming, falling back to non-streaming mode: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+[ERROR] Error in non-streaming fallback: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+[ERROR] Error: Error: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+    at validateHeaders (/$bunfs/root/claude:352:935)
+    at buildHeaders (/$bunfs/root/claude:352:8427)
+    at async buildRequest (/$bunfs/root/claude:352:7493)
+    at async makeRequest (/$bunfs/root/claude:352:3332)
+    at processTicksAndRejections (native:7:39)
+[DEBUG] Getting matching hook commands for SubagentStop with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] Checking for native installer update to version 2.0.20
+[DEBUG] Ripgrep first use test: PASSED (mode=builtin, path=/home/navair/.claude/downloads/claude-2.0.20-linux-arm64)
+[DEBUG] rg error (signal=null, code=2, stderr: rg: Resource temporarily unavailable (os error 11)
+), 1500 results
+[DEBUG] Downloading native installer version 2.0.20
+[DEBUG] Successfully updated to version 2.0.20
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.23558.1760645929004
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 31028 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.23558.1760645929004 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Native installer: Set installMethod to "native" and disabled legacy auto-updater for protection
+[DEBUG] Install: installLatest returned version=2.0.20, wasUpdated=true, lockFailed=false
+[DEBUG] Install: Setup launcher completed with 1 messages
+[DEBUG] Install: Setup message: Native installation exists but ~/.local/bin is not in your PATH. Run: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+[DEBUG] Install: Cleaning up npm installations after successful install

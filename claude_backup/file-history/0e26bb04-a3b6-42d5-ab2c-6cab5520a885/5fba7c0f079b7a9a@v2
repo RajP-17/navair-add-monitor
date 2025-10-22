@@ -1,0 +1,590 @@
+#!/usr/bin/env python3
+"""
+Comprehensive sensor test script for NAVAIR_ADDITIVE system.
+
+Tests:
+- BME280 environmental sensor (temperature, humidity, pressure)
+- MPU6050 bed sensor (vibration monitoring)
+- MPU6050 body sensor (vibration monitoring)
+
+Usage:
+    python3 test_sensors.py                    # Run all sensor tests
+    python3 test_sensors.py --calibrate        # Run tests with calibration
+    python3 test_sensors.py --continuous       # Continuous monitoring mode
+    python3 test_sensors.py --sensor bme280    # Test specific sensor only
+"""
+
+import asyncio
+import sys
+import os
+import logging
+import argparse
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from navair_additive.sensors.bme280_handler import BME280Handler
+from navair_additive.sensors.mpu6050_handler import MPU6050Handler
+from navair_additive.data.models import SensorType
+
+# ANSI color codes for terminal output
+class Colors:
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    BOLD = '\033[1m'
+    RESET = '\033[0m'
+
+
+class SensorTester:
+    """Comprehensive sensor testing utility."""
+
+    def __init__(self, verbose: bool = True, save_log: bool = True):
+        """Initialize sensor tester."""
+        self.verbose = verbose
+        self.save_log = save_log
+        self.log_file = None
+
+        if save_log:
+            log_dir = Path("logs/sensor_tests")
+            log_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.log_file = log_dir / f"sensor_test_{timestamp}.log"
+
+        # Configure logging
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+
+        # Sensor instances
+        self.bme280: Optional[BME280Handler] = None
+        self.mpu_bed: Optional[MPU6050Handler] = None
+        self.mpu_body: Optional[MPU6050Handler] = None
+
+        # Test results
+        self.results = {
+            'bme280': {'status': 'not_tested', 'details': {}},
+            'mpu_bed': {'status': 'not_tested', 'details': {}},
+            'mpu_body': {'status': 'not_tested', 'details': {}}
+        }
+
+    def print_header(self, text: str):
+        """Print formatted header."""
+        line = "=" * 70
+        msg = f"\n{line}\n{Colors.BOLD}{Colors.CYAN}{text}{Colors.RESET}\n{line}"
+        print(msg)
+        self._log(msg)
+
+    def print_success(self, text: str):
+        """Print success message."""
+        msg = f"{Colors.GREEN}✓ {text}{Colors.RESET}"
+        print(msg)
+        self._log(f"✓ {text}")
+
+    def print_warning(self, text: str):
+        """Print warning message."""
+        msg = f"{Colors.YELLOW}⚠ {text}{Colors.RESET}"
+        print(msg)
+        self._log(f"⚠ {text}")
+
+    def print_error(self, text: str):
+        """Print error message."""
+        msg = f"{Colors.RED}✗ {text}{Colors.RESET}"
+        print(msg)
+        self._log(f"✗ {text}")
+
+    def print_info(self, text: str):
+        """Print info message."""
+        msg = f"{Colors.BLUE}ℹ {text}{Colors.RESET}"
+        print(msg)
+        self._log(f"ℹ {text}")
+
+    def _log(self, text: str):
+        """Write to log file."""
+        if self.log_file:
+            # Remove ANSI codes for log file
+            import re
+            clean_text = re.sub(r'\033\[[0-9;]*m', '', text)
+            with open(self.log_file, 'a') as f:
+                f.write(f"{clean_text}\n")
+
+    async def test_bme280(self, calibrate: bool = False) -> bool:
+        """Test BME280 environmental sensor."""
+        self.print_header("Testing BME280 Environmental Sensor")
+
+        try:
+            # Initialize sensor
+            self.print_info("Initializing BME280 at I2C address 0x76...")
+            self.bme280 = BME280Handler(
+                sensor_id="bme280_test",
+                i2c_address=0x76,
+                polling_rate=1.0
+            )
+
+            # Connect
+            self.print_info("Connecting to sensor...")
+            connected = await self.bme280.connect()
+
+            if not connected:
+                self.print_error("Failed to connect to BME280")
+                self.print_info("Troubleshooting:")
+                self.print_info("  1. Check I2C wiring (SDA, SCL, VCC, GND)")
+                self.print_info("  2. Verify sensor is at address 0x76 (or try 0x77)")
+                self.print_info("  3. Run: sudo i2cdetect -y 1")
+                self.print_info("  4. Check if I2C is enabled: sudo raspi-config")
+                self.results['bme280']['status'] = 'failed'
+                self.results['bme280']['error'] = 'Connection failed'
+                return False
+
+            self.print_success("Connected to BME280")
+
+            # Health check
+            self.print_info("Running health check...")
+            health_ok = await self.bme280._health_check()
+
+            if not health_ok:
+                self.print_warning("BME280 health check failed - readings may be unreliable")
+            else:
+                self.print_success("Health check passed")
+
+            # Calibrate if requested
+            if calibrate:
+                self.print_info("Running calibration...")
+                self.print_info("  (Using default reference values - update for accurate calibration)")
+                cal_success = await self.bme280._calibrate()
+                if cal_success:
+                    self.print_success("Calibration completed")
+                else:
+                    self.print_warning("Calibration failed")
+
+            # Read sensor data
+            self.print_info("Reading sensor data...")
+            reading = await self.bme280._read_data()
+
+            if not reading:
+                self.print_error("Failed to read sensor data")
+                self.results['bme280']['status'] = 'failed'
+                self.results['bme280']['error'] = 'Read failed'
+                return False
+
+            # Display results
+            print(f"\n{Colors.BOLD}BME280 Readings:{Colors.RESET}")
+
+            if isinstance(reading.value, dict):
+                if 'temperature' in reading.value:
+                    temp = reading.value['temperature']
+                    print(f"  Temperature:    {Colors.GREEN}{temp:.2f} °C{Colors.RESET}")
+
+                if 'humidity' in reading.value:
+                    humidity = reading.value['humidity']
+                    print(f"  Humidity:       {Colors.GREEN}{humidity:.1f} %RH{Colors.RESET}")
+
+                if 'pressure' in reading.value:
+                    pressure = reading.value['pressure']
+                    print(f"  Pressure:       {Colors.GREEN}{pressure:.1f} hPa{Colors.RESET}")
+
+            print(f"  Quality Flag:   {self._format_quality(reading.quality_flag.value)}")
+            print(f"  Timestamp:      {reading.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+
+            # Get sensor info
+            info = await self.bme280.get_sensor_info()
+            print(f"\n{Colors.BOLD}Sensor Info:{Colors.RESET}")
+            print(f"  I2C Address:    {info['i2c_address']}")
+            print(f"  Status:         {info['status']}")
+            print(f"  Reading Mode:   {info['reading_mode']}")
+
+            offsets = info['offsets']
+            print(f"  Offsets:        T={offsets['temperature']:.3f}, H={offsets['humidity']:.2f}, P={offsets['pressure']:.2f}")
+
+            self.results['bme280']['status'] = 'passed'
+            self.results['bme280']['details'] = {
+                'reading': reading.value,
+                'quality': reading.quality_flag.value,
+                'health': health_ok
+            }
+
+            self.print_success("BME280 test completed successfully")
+            return True
+
+        except Exception as e:
+            self.print_error(f"BME280 test failed: {e}")
+            self.logger.exception("BME280 test error")
+            self.results['bme280']['status'] = 'error'
+            self.results['bme280']['error'] = str(e)
+            return False
+
+        finally:
+            if self.bme280:
+                await self.bme280.disconnect()
+
+    async def test_mpu6050(self, sensor_type: str, address: int, calibrate: bool = False) -> bool:
+        """Test MPU6050 sensor."""
+        sensor_name = f"MPU6050 {sensor_type.upper()}"
+        result_key = f"mpu_{sensor_type}"
+
+        self.print_header(f"Testing {sensor_name} Sensor")
+
+        try:
+            # Initialize sensor
+            self.print_info(f"Initializing {sensor_name} at I2C address 0x{address:02x}...")
+
+            sensor_type_enum = SensorType.MPU6050_BED if sensor_type == "bed" else SensorType.MPU6050_BODY
+
+            mpu_sensor = MPU6050Handler(
+                sensor_id=f"mpu6050_{sensor_type}_test",
+                sensor_type=sensor_type_enum,
+                i2c_address=address,
+                polling_rate=20.0,
+                data_mode='both'  # Get both raw and processed data
+            )
+
+            # Store reference
+            if sensor_type == "bed":
+                self.mpu_bed = mpu_sensor
+            else:
+                self.mpu_body = mpu_sensor
+
+            # Connect
+            self.print_info("Connecting to sensor...")
+            connected = await mpu_sensor.connect()
+
+            if not connected:
+                self.print_error(f"Failed to connect to {sensor_name}")
+                self.print_info("Troubleshooting:")
+                self.print_info("  1. Check I2C wiring (SDA, SCL, VCC, GND)")
+                self.print_info(f"  2. Verify sensor is at address 0x{address:02x}")
+                self.print_info("  3. Run: sudo i2cdetect -y 1")
+                self.print_info("  4. Check if AD0 pin is connected correctly (0x68 if LOW, 0x69 if HIGH)")
+                self.results[result_key]['status'] = 'failed'
+                self.results[result_key]['error'] = 'Connection failed'
+                return False
+
+            self.print_success(f"Connected to {sensor_name}")
+
+            # Health check
+            self.print_info("Running health check...")
+            health_ok = await mpu_sensor._health_check()
+
+            if not health_ok:
+                self.print_warning(f"{sensor_name} health check failed - readings may be unreliable")
+            else:
+                self.print_success("Health check passed")
+
+            # Calibrate if requested
+            if calibrate:
+                self.print_info("Running calibration...")
+                self.print_warning("Keep sensor STATIONARY for 10 seconds!")
+                await asyncio.sleep(2)  # Give user time to read
+                cal_success = await mpu_sensor._calibrate(duration=10)
+                if cal_success:
+                    self.print_success("Calibration completed")
+                    offsets = mpu_sensor.get_offsets()
+                    print(f"  Accel offsets: {[f'{x:.4f}' for x in offsets['acceleration']]}")
+                    print(f"  Gyro offsets:  {[f'{x:.4f}' for x in offsets['angular_velocity']]}")
+                else:
+                    self.print_warning("Calibration failed")
+
+            # Read sensor data multiple times to build up buffer
+            self.print_info("Collecting sensor data...")
+            for i in range(60):  # Collect 60 samples (~3 seconds at 20Hz)
+                await mpu_sensor._read_data()
+                await asyncio.sleep(0.05)
+
+            # Get final reading with analysis
+            reading = await mpu_sensor._read_data()
+
+            if not reading:
+                self.print_error("Failed to read sensor data")
+                self.results[result_key]['status'] = 'failed'
+                self.results[result_key]['error'] = 'Read failed'
+                return False
+
+            # Display results
+            print(f"\n{Colors.BOLD}{sensor_name} Readings:{Colors.RESET}")
+
+            if isinstance(reading.value, dict):
+                # Raw data
+                if 'raw' in reading.value:
+                    raw = reading.value['raw']
+                    accel = raw['acceleration']
+                    gyro = raw['angular_velocity']
+                    temp = raw['temperature']
+
+                    print(f"  Acceleration:   X={accel[0]:7.3f}, Y={accel[1]:7.3f}, Z={accel[2]:7.3f} m/s²")
+                    print(f"  Angular Vel:    X={gyro[0]:7.3f}, Y={gyro[1]:7.3f}, Z={gyro[2]:7.3f} rad/s")
+                    print(f"  Temperature:    {Colors.GREEN}{temp:.1f} °C{Colors.RESET}")
+
+                # Processed data
+                if 'processed' in reading.value:
+                    proc = reading.value['processed']
+                    vib_mag = proc['vibration_magnitude']
+                    rot_mag = proc['rotation_magnitude']
+
+                    vib_color = Colors.GREEN if vib_mag < 2.0 else (Colors.YELLOW if vib_mag < 5.0 else Colors.RED)
+                    print(f"  Vibration Mag:  {vib_color}{vib_mag:.3f} m/s²{Colors.RESET}")
+                    print(f"  Rotation Mag:   {rot_mag:.3f} rad/s")
+
+            print(f"  Quality Flag:   {self._format_quality(reading.quality_flag.value)}")
+
+            # Frequency analysis
+            if 'frequency_analysis' in reading.metadata:
+                freq = reading.metadata['frequency_analysis']
+                print(f"\n{Colors.BOLD}  Frequency Analysis:{Colors.RESET}")
+                print(f"    Dominant Freq:    {freq.get('dominant_frequency', 0):.2f} Hz")
+                print(f"    Spectral Center:  {freq.get('spectral_centroid', 0):.2f} Hz")
+
+                if 'band_powers' in freq:
+                    print(f"    Band Powers:")
+                    for band, power in freq['band_powers'].items():
+                        print(f"      {band:>6}: {power:.2e}")
+
+            # Get sensor info
+            info = await mpu_sensor.get_sensor_info()
+            print(f"\n{Colors.BOLD}Sensor Info:{Colors.RESET}")
+            print(f"  I2C Address:    {info['i2c_address']}")
+            print(f"  Status:         {info['status']}")
+            print(f"  Data Mode:      {info['data_mode']}")
+            print(f"  Config:         {info['configuration']['accel_range']}, {info['configuration']['gyro_range']}")
+            print(f"  Buffer Samples: {info['buffer_status']['accel_samples']}")
+
+            self.results[result_key]['status'] = 'passed'
+            self.results[result_key]['details'] = {
+                'reading': reading.value,
+                'quality': reading.quality_flag.value,
+                'health': health_ok,
+                'frequency_analysis': reading.metadata.get('frequency_analysis', {})
+            }
+
+            self.print_success(f"{sensor_name} test completed successfully")
+            return True
+
+        except Exception as e:
+            self.print_error(f"{sensor_name} test failed: {e}")
+            self.logger.exception(f"{sensor_name} test error")
+            self.results[result_key]['status'] = 'error'
+            self.results[result_key]['error'] = str(e)
+            return False
+
+        finally:
+            if sensor_type == "bed" and self.mpu_bed:
+                await self.mpu_bed.disconnect()
+            elif sensor_type == "body" and self.mpu_body:
+                await self.mpu_body.disconnect()
+
+    def _format_quality(self, quality: str) -> str:
+        """Format quality flag with color."""
+        colors = {
+            'good': Colors.GREEN,
+            'warning': Colors.YELLOW,
+            'poor': Colors.RED
+        }
+        color = colors.get(quality.lower(), Colors.RESET)
+        return f"{color}{quality.upper()}{Colors.RESET}"
+
+    async def continuous_monitoring(self, duration: int = 60):
+        """Run continuous monitoring mode."""
+        self.print_header(f"Continuous Monitoring Mode ({duration}s)")
+
+        # Initialize all sensors
+        sensors = {}
+
+        try:
+            # BME280
+            self.print_info("Initializing BME280...")
+            bme = BME280Handler(sensor_id="bme280_monitor", i2c_address=0x76)
+            if await bme.connect():
+                sensors['bme280'] = bme
+                self.print_success("BME280 ready")
+            else:
+                self.print_warning("BME280 not available")
+
+            # MPU6050 Bed
+            self.print_info("Initializing MPU6050 Bed...")
+            mpu_bed = MPU6050Handler(
+                sensor_id="mpu_bed_monitor",
+                sensor_type=SensorType.MPU6050_BED,
+                i2c_address=0x68,
+                data_mode='magnitude'
+            )
+            if await mpu_bed.connect():
+                sensors['mpu_bed'] = mpu_bed
+                self.print_success("MPU6050 Bed ready")
+            else:
+                self.print_warning("MPU6050 Bed not available")
+
+            # MPU6050 Body
+            self.print_info("Initializing MPU6050 Body...")
+            mpu_body = MPU6050Handler(
+                sensor_id="mpu_body_monitor",
+                sensor_type=SensorType.MPU6050_BODY,
+                i2c_address=0x69,
+                data_mode='magnitude'
+            )
+            if await mpu_body.connect():
+                sensors['mpu_body'] = mpu_body
+                self.print_success("MPU6050 Body ready")
+            else:
+                self.print_warning("MPU6050 Body not available")
+
+            if not sensors:
+                self.print_error("No sensors available for monitoring")
+                return
+
+            # Monitoring loop
+            start_time = datetime.now()
+            iteration = 0
+
+            print(f"\n{Colors.BOLD}Starting monitoring... Press Ctrl+C to stop{Colors.RESET}\n")
+
+            while (datetime.now() - start_time).total_seconds() < duration:
+                iteration += 1
+                print(f"\r{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}] Iteration {iteration}{Colors.RESET}", end='')
+
+                line_parts = []
+
+                # Read BME280
+                if 'bme280' in sensors:
+                    reading = await sensors['bme280']._read_data()
+                    if reading and isinstance(reading.value, dict):
+                        temp = reading.value.get('temperature', 0)
+                        humidity = reading.value.get('humidity', 0)
+                        line_parts.append(f"Temp: {temp:.1f}°C  RH: {humidity:.0f}%")
+
+                # Read MPU Bed
+                if 'mpu_bed' in sensors:
+                    reading = await sensors['mpu_bed']._read_data()
+                    if reading:
+                        vib = reading.value if isinstance(reading.value, (int, float)) else 0
+                        vib_color = Colors.GREEN if vib < 2.0 else (Colors.YELLOW if vib < 5.0 else Colors.RED)
+                        line_parts.append(f"Bed Vib: {vib_color}{vib:.3f}{Colors.RESET} m/s²")
+
+                # Read MPU Body
+                if 'mpu_body' in sensors:
+                    reading = await sensors['mpu_body']._read_data()
+                    if reading:
+                        vib = reading.value if isinstance(reading.value, (int, float)) else 0
+                        vib_color = Colors.GREEN if vib < 2.0 else (Colors.YELLOW if vib < 5.0 else Colors.RED)
+                        line_parts.append(f"Body Vib: {vib_color}{vib:.3f}{Colors.RESET} m/s²")
+
+                print(f"  |  {' | '.join(line_parts)}", end='')
+
+                await asyncio.sleep(1.0)
+
+            print(f"\n\n{Colors.GREEN}Monitoring completed{Colors.RESET}")
+
+        except KeyboardInterrupt:
+            print(f"\n\n{Colors.YELLOW}Monitoring stopped by user{Colors.RESET}")
+
+        except Exception as e:
+            self.print_error(f"Monitoring error: {e}")
+            self.logger.exception("Monitoring error")
+
+        finally:
+            # Disconnect all sensors
+            for name, sensor in sensors.items():
+                try:
+                    await sensor.disconnect()
+                except:
+                    pass
+
+    def print_summary(self):
+        """Print test summary."""
+        self.print_header("Test Summary")
+
+        total = len(self.results)
+        passed = sum(1 for r in self.results.values() if r['status'] == 'passed')
+        failed = sum(1 for r in self.results.values() if r['status'] == 'failed')
+        errors = sum(1 for r in self.results.values() if r['status'] == 'error')
+        not_tested = sum(1 for r in self.results.values() if r['status'] == 'not_tested')
+
+        print(f"\nTotal Sensors: {total}")
+        print(f"  {Colors.GREEN}Passed:     {passed}{Colors.RESET}")
+        print(f"  {Colors.RED}Failed:     {failed}{Colors.RESET}")
+        print(f"  {Colors.YELLOW}Errors:     {errors}{Colors.RESET}")
+        print(f"  {Colors.BLUE}Not Tested: {not_tested}{Colors.RESET}")
+
+        print(f"\n{Colors.BOLD}Sensor Details:{Colors.RESET}")
+        for sensor, result in self.results.items():
+            status_icon = {
+                'passed': f"{Colors.GREEN}✓{Colors.RESET}",
+                'failed': f"{Colors.RED}✗{Colors.RESET}",
+                'error': f"{Colors.YELLOW}⚠{Colors.RESET}",
+                'not_tested': f"{Colors.BLUE}○{Colors.RESET}"
+            }
+            icon = status_icon.get(result['status'], '?')
+            print(f"  {icon} {sensor.upper():15} - {result['status'].upper()}")
+            if 'error' in result:
+                print(f"      Error: {result['error']}")
+
+        if self.log_file:
+            print(f"\n{Colors.BLUE}Log saved to: {self.log_file}{Colors.RESET}")
+
+
+async def main():
+    """Main test function."""
+    parser = argparse.ArgumentParser(
+        description="Test NAVAIR_ADDITIVE sensors",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 test_sensors.py                       # Test all sensors
+  python3 test_sensors.py --calibrate           # Test with calibration
+  python3 test_sensors.py --continuous 120      # Monitor for 120 seconds
+  python3 test_sensors.py --sensor bme280       # Test only BME280
+  python3 test_sensors.py --sensor mpu_bed      # Test only MPU6050 bed
+        """
+    )
+
+    parser.add_argument('--sensor', choices=['bme280', 'mpu_bed', 'mpu_body', 'all'],
+                       default='all', help='Sensor to test (default: all)')
+    parser.add_argument('--calibrate', action='store_true',
+                       help='Run calibration before testing')
+    parser.add_argument('--continuous', type=int, metavar='SECONDS',
+                       help='Run continuous monitoring for specified seconds')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Verbose output')
+    parser.add_argument('--no-log', action='store_true',
+                       help='Do not save log file')
+
+    args = parser.parse_args()
+
+    # Create tester
+    tester = SensorTester(verbose=args.verbose, save_log=not args.no_log)
+
+    try:
+        if args.continuous:
+            # Continuous monitoring mode
+            await tester.continuous_monitoring(duration=args.continuous)
+        else:
+            # Standard test mode
+            if args.sensor in ['bme280', 'all']:
+                await tester.test_bme280(calibrate=args.calibrate)
+
+            if args.sensor in ['mpu_bed', 'all']:
+                await tester.test_mpu6050('bed', address=0x68, calibrate=args.calibrate)
+
+            if args.sensor in ['mpu_body', 'all']:
+                await tester.test_mpu6050('body', address=0x69, calibrate=args.calibrate)
+
+            # Print summary
+            tester.print_summary()
+
+    except KeyboardInterrupt:
+        print(f"\n{Colors.YELLOW}Test interrupted by user{Colors.RESET}")
+    except Exception as e:
+        print(f"\n{Colors.RED}Test failed: {e}{Colors.RESET}")
+        logging.exception("Test error")
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

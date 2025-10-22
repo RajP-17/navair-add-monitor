@@ -1,0 +1,396 @@
+"""BME280 environmental sensor handler for NAVAIR_ADDITIVE system."""
+
+import asyncio
+import logging
+from datetime import datetime
+from typing import Dict, Optional, Any
+
+try:
+    import board
+    import adafruit_bme280.basic as adafruit_bme280
+    import busio
+    HAS_BME280_LIB = True
+except ImportError:
+    HAS_BME280_LIB = False
+    
+from ..data.models import SensorType, QualityFlag
+from .base_sensor import BaseSensor, SensorReading, SensorStatus
+
+logger = logging.getLogger(__name__)
+
+
+class BME280Handler(BaseSensor):
+    """Handler for BME280 environmental sensor (temperature, humidity, pressure)."""
+    
+    def __init__(
+        self,
+        sensor_id: str = "bme280_main",
+        sensor_type: SensorType = SensorType.BME280,
+        i2c_address: int = 0x76,
+        sda_pin: Optional[int] = None,
+        scl_pin: Optional[int] = None,
+        polling_rate: float = 1/60,  # 1 per minute as per spec
+        **kwargs
+    ):
+        """
+        Initialize BME280 sensor handler.
+
+        Args:
+            sensor_id: Unique sensor identifier
+            sensor_type: Sensor type (defaults to BME280)
+            i2c_address: I2C address of BME280 (0x76 or 0x77)
+            sda_pin: SDA pin number (None for default)
+            scl_pin: SCL pin number (None for default)
+            polling_rate: Polling frequency in Hz
+            **kwargs: Additional configuration
+        """
+        super().__init__(
+            sensor_id=sensor_id,
+            sensor_type=sensor_type,
+            polling_rate=polling_rate,
+            **kwargs
+        )
+        
+        self.i2c_address = i2c_address
+        self.sda_pin = sda_pin
+        self.scl_pin = scl_pin
+        
+        self._i2c: Optional[busio.I2C] = None
+        self._sensor: Optional[adafruit_bme280.Adafruit_BME280_I2C] = None
+        
+        # Calibration offsets
+        self._temp_offset = kwargs.get('temp_offset', 0.0)
+        self._humidity_offset = kwargs.get('humidity_offset', 0.0)
+        self._pressure_offset = kwargs.get('pressure_offset', 0.0)
+        
+        # Reading configuration
+        self._reading_mode = kwargs.get('reading_mode', 'all')  # 'temp', 'humidity', 'pressure', 'all'
+        # Use integer values for compatibility with all library versions
+        self._oversample_config = kwargs.get('oversample_config', {
+            'temp': 2,      # 2x oversampling
+            'pressure': 16,  # 16x oversampling
+            'humidity': 1    # 1x oversampling
+        })
+        
+        # Environmental limits for quality checking
+        self._temp_limits = (-40, 85)  # °C
+        self._humidity_limits = (0, 100)  # %RH
+        self._pressure_limits = (300, 1100)  # hPa
+        
+        logger.info(f"Initialized BME280 handler at I2C address 0x{i2c_address:02x}")
+    
+    async def _connect(self) -> bool:
+        """Connect to BME280 sensor via I2C."""
+        if not HAS_BME280_LIB:
+            logger.error("BME280 libraries not available. Install adafruit-circuitpython-bme280")
+            return False
+        
+        try:
+            # Initialize I2C bus
+            if self.sda_pin and self.scl_pin:
+                import digitalio
+                sda = digitalio.DigitalInOut(getattr(board, f"D{self.sda_pin}"))
+                scl = digitalio.DigitalInOut(getattr(board, f"D{self.scl_pin}"))
+                self._i2c = busio.I2C(scl, sda)
+            else:
+                # Use default I2C pins
+                self._i2c = busio.I2C(board.SCL, board.SDA)
+            
+            # Initialize sensor
+            self._sensor = adafruit_bme280.Adafruit_BME280_I2C(
+                self._i2c, 
+                address=self.i2c_address
+            )
+            
+            # Configure oversampling (try both old and new attribute names)
+            # Newer library uses 'oversample_' prefix
+            if hasattr(self._sensor, 'oversample_temperature'):
+                self._sensor.oversample_temperature = self._oversample_config['temp']
+            elif hasattr(self._sensor, 'overscan_temperature'):
+                self._sensor.overscan_temperature = self._oversample_config['temp']
+
+            if hasattr(self._sensor, 'oversample_pressure'):
+                self._sensor.oversample_pressure = self._oversample_config['pressure']
+            elif hasattr(self._sensor, 'overscan_pressure'):
+                self._sensor.overscan_pressure = self._oversample_config['pressure']
+
+            if hasattr(self._sensor, 'oversample_humidity'):
+                self._sensor.oversample_humidity = self._oversample_config['humidity']
+            elif hasattr(self._sensor, 'overscan_humidity'):
+                self._sensor.overscan_humidity = self._oversample_config['humidity']
+            
+            # Test read to verify connection
+            _ = self._sensor.temperature
+            
+            logger.info(f"Connected to BME280 at address 0x{self.i2c_address:02x}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to connect to BME280: {e}")
+            self._cleanup_connection()
+            return False
+    
+    async def _disconnect(self) -> None:
+        """Disconnect from BME280 sensor."""
+        self._cleanup_connection()
+        logger.info("Disconnected from BME280")
+    
+    def _cleanup_connection(self) -> None:
+        """Clean up I2C connection resources."""
+        try:
+            if self._i2c:
+                self._i2c.deinit()
+        except Exception as e:
+            logger.warning(f"Error cleaning up BME280 connection: {e}")
+        finally:
+            self._i2c = None
+            self._sensor = None
+    
+    async def _read_data(self) -> Optional[SensorReading]:
+        """Read environmental data from BME280."""
+        if not self._sensor:
+            logger.error("BME280 sensor not connected")
+            return None
+        
+        try:
+            timestamp = datetime.utcnow()
+            readings = {}
+            quality_flag = QualityFlag.GOOD
+            
+            # Read temperature
+            if self._reading_mode in ['temp', 'all']:
+                temp = self._sensor.temperature + self._temp_offset
+                readings['temperature'] = temp
+                
+                # Check temperature limits
+                if not (self._temp_limits[0] <= temp <= self._temp_limits[1]):
+                    quality_flag = QualityFlag.WARNING
+                    logger.warning(f"Temperature {temp:.2f}°C outside normal range")
+            
+            # Read humidity
+            if self._reading_mode in ['humidity', 'all']:
+                humidity = self._sensor.relative_humidity + self._humidity_offset
+                readings['humidity'] = humidity
+                
+                # Check humidity limits
+                if not (self._humidity_limits[0] <= humidity <= self._humidity_limits[1]):
+                    quality_flag = QualityFlag.WARNING
+                    logger.warning(f"Humidity {humidity:.1f}%RH outside normal range")
+            
+            # Read pressure
+            if self._reading_mode in ['pressure', 'all']:
+                pressure = self._sensor.pressure + self._pressure_offset
+                readings['pressure'] = pressure
+                
+                # Check pressure limits
+                if not (self._pressure_limits[0] <= pressure <= self._pressure_limits[1]):
+                    quality_flag = QualityFlag.WARNING
+                    logger.warning(f"Pressure {pressure:.1f}hPa outside normal range")
+            
+            if not readings:
+                logger.error("No BME280 readings configured")
+                return None
+            
+            # Create sensor reading
+            if len(readings) == 1:
+                # Single value reading
+                key = list(readings.keys())[0]
+                value = readings[key]
+                unit = self._get_unit(key)
+                metadata = {'reading_type': key}
+            else:
+                # Multi-value reading
+                value = readings
+                unit = None
+                metadata = {'reading_types': list(readings.keys())}
+            
+            # Add sensor metadata
+            metadata.update({
+                'i2c_address': f"0x{self.i2c_address:02x}",
+                'calibration_offsets': {
+                    'temperature': self._temp_offset,
+                    'humidity': self._humidity_offset,
+                    'pressure': self._pressure_offset
+                }
+            })
+            
+            return SensorReading(
+                sensor_type=self.sensor_type,
+                sensor_id=self.sensor_id,
+                value=value,
+                unit=unit,
+                quality_flag=quality_flag,
+                timestamp=timestamp,
+                metadata=metadata
+            )
+            
+        except OSError as e:
+            logger.error(f"I2C communication error with BME280: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error reading BME280 data: {e}")
+            return None
+    
+    async def _health_check(self) -> bool:
+        """Perform BME280 health check."""
+        if not self._sensor:
+            return False
+        
+        try:
+            # Test all three measurements
+            temp = self._sensor.temperature
+            humidity = self._sensor.relative_humidity
+            pressure = self._sensor.pressure
+            
+            # Check for reasonable values
+            temp_ok = -50 <= temp <= 100
+            humidity_ok = 0 <= humidity <= 100
+            pressure_ok = 200 <= pressure <= 1200
+            
+            health_ok = temp_ok and humidity_ok and pressure_ok
+            
+            if not health_ok:
+                logger.warning(f"BME280 health check failed: T={temp:.1f}°C, H={humidity:.1f}%, P={pressure:.1f}hPa")
+            
+            return health_ok
+            
+        except Exception as e:
+            logger.error(f"BME280 health check error: {e}")
+            return False
+    
+    async def _calibrate(self, **kwargs) -> bool:
+        """
+        Calibrate BME280 sensor.
+        
+        Args:
+            reference_temp: Reference temperature in °C
+            reference_humidity: Reference humidity in %RH
+            reference_pressure: Reference pressure in hPa
+            **kwargs: Additional calibration parameters
+        """
+        if not self._sensor:
+            logger.error("BME280 sensor not connected")
+            return False
+        
+        try:
+            # Take multiple readings for averaging
+            readings = []
+            for _ in range(10):
+                reading = {
+                    'temp': self._sensor.temperature,
+                    'humidity': self._sensor.relative_humidity,
+                    'pressure': self._sensor.pressure
+                }
+                readings.append(reading)
+                await asyncio.sleep(0.1)
+            
+            # Calculate averages
+            avg_temp = sum(r['temp'] for r in readings) / len(readings)
+            avg_humidity = sum(r['humidity'] for r in readings) / len(readings)
+            avg_pressure = sum(r['pressure'] for r in readings) / len(readings)
+            
+            # Calculate offsets from reference values
+            if 'reference_temp' in kwargs:
+                self._temp_offset = kwargs['reference_temp'] - avg_temp
+                logger.info(f"Temperature offset set to {self._temp_offset:.3f}°C")
+            
+            if 'reference_humidity' in kwargs:
+                self._humidity_offset = kwargs['reference_humidity'] - avg_humidity
+                logger.info(f"Humidity offset set to {self._humidity_offset:.2f}%RH")
+            
+            if 'reference_pressure' in kwargs:
+                self._pressure_offset = kwargs['reference_pressure'] - avg_pressure
+                logger.info(f"Pressure offset set to {self._pressure_offset:.2f}hPa")
+            
+            # Store calibration data for persistence
+            calibration_data = {
+                'timestamp': datetime.utcnow(),
+                'sensor_id': self.sensor_id,
+                'temp_offset': self._temp_offset,
+                'humidity_offset': self._humidity_offset,
+                'pressure_offset': self._pressure_offset,
+                'raw_averages': {
+                    'temperature': avg_temp,
+                    'humidity': avg_humidity,
+                    'pressure': avg_pressure
+                },
+                'reference_values': kwargs
+            }
+            
+            # TODO: Save calibration data to database
+            logger.info(f"BME280 calibration completed: {calibration_data}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"BME280 calibration failed: {e}")
+            return False
+    
+    def _get_unit(self, reading_type: str) -> str:
+        """Get unit for reading type."""
+        units = {
+            'temperature': '°C',
+            'humidity': '%RH',
+            'pressure': 'hPa'
+        }
+        return units.get(reading_type, '')
+    
+    def set_offsets(
+        self,
+        temp_offset: Optional[float] = None,
+        humidity_offset: Optional[float] = None,
+        pressure_offset: Optional[float] = None
+    ) -> None:
+        """Set calibration offsets."""
+        if temp_offset is not None:
+            self._temp_offset = temp_offset
+        if humidity_offset is not None:
+            self._humidity_offset = humidity_offset
+        if pressure_offset is not None:
+            self._pressure_offset = pressure_offset
+        
+        logger.info(f"BME280 offsets updated: T={self._temp_offset:.3f}, H={self._humidity_offset:.2f}, P={self._pressure_offset:.2f}")
+    
+    def get_offsets(self) -> Dict[str, float]:
+        """Get current calibration offsets."""
+        return {
+            'temperature': self._temp_offset,
+            'humidity': self._humidity_offset,
+            'pressure': self._pressure_offset
+        }
+    
+    def set_reading_mode(self, mode: str) -> None:
+        """Set reading mode ('temp', 'humidity', 'pressure', 'all')."""
+        valid_modes = ['temp', 'temperature', 'humidity', 'pressure', 'all']
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid reading mode: {mode}. Valid modes: {valid_modes}")
+        
+        self._reading_mode = mode
+        logger.info(f"BME280 reading mode set to: {mode}")
+    
+    async def get_sensor_info(self) -> Dict[str, Any]:
+        """Get sensor information and status."""
+        info = {
+            'sensor_type': self.sensor_type.value,
+            'sensor_id': self.sensor_id,
+            'i2c_address': f"0x{self.i2c_address:02x}",
+            'status': self.status.value,
+            'connected': self.is_connected,
+            'reading_mode': self._reading_mode,
+            'polling_rate': self.polling_rate,
+            'offsets': self.get_offsets(),
+            'limits': {
+                'temperature': self._temp_limits,
+                'humidity': self._humidity_limits,
+                'pressure': self._pressure_limits
+            }
+        }
+        
+        if self.is_connected:
+            try:
+                test_reading = await self._read_data()
+                if test_reading:
+                    info['last_reading'] = test_reading.to_dict()
+            except Exception as e:
+                info['last_reading_error'] = str(e)
+        
+        return info

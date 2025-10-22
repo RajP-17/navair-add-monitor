@@ -1,0 +1,1869 @@
+/**
+ * NAVAIR Additive Manufacturing Dashboard
+ * 
+ * A modern, professional web dashboard for monitoring NAVAIR 3D printer operations
+ * with real-time data visualization, system health monitoring, and quality analytics.
+ * 
+ * @version 2.0
+ * @author NAVAIR Team
+ * @created January 2025
+ * 
+ * Features:
+ * - Real-time sensor monitoring with gauges and charts
+ * - Multi-page navigation with accessibility support
+ * - API integration with comprehensive error handling
+ * - Responsive design for mobile and desktop
+ * - Professional UI with loading states and animations
+ */
+
+/**
+ * Main Dashboard Controller Class
+ * 
+ * Manages all dashboard functionality including:
+ * - API communication and data fetching
+ * - Chart rendering and updates
+ * - UI state management
+ * - Error handling and user feedback
+ */
+class NAVAIRDashboard {
+    /**
+     * Initialize dashboard with configuration and state
+     */
+    constructor() {
+        // Auto-detect API URL based on window location
+        // If accessed from laptop (192.168.2.x), use Pi's IP
+        // If accessed from Pi (localhost), use localhost
+        this.apiBaseUrl = this.resolveApiBaseUrl();
+        this.requestTimeoutMs = 5000;
+        console.log('API Base URL:', this.apiBaseUrl);
+
+        this.updateInterval = 2000; // 2 seconds default
+        this.printStatusIntervalMs = 5000;
+        this.charts = {};
+        this.gauges = {};
+        this.isConnected = {
+            sensors: false,
+            print: false
+        };
+        this.sensorHistory = [];
+        this.maxHistoryPoints = 50;
+
+        this.pollingHandles = {
+            sensors: null,
+            print: null
+        };
+        this.hasInitializedPolling = false;
+        this.latestReportJobId = null;
+
+        this.loadPersistedPreferences();
+        this.init();
+    }
+
+    /**
+     * Initialize dashboard components and start data fetching
+     */
+    async init() {
+        this.setupGauges();
+        this.setupCharts();
+        this.startDataFetching(true);
+        this.updateConnectionStatus();
+    }
+
+    loadPersistedPreferences() {
+        try {
+            this.updateInterval = 2000;
+            const storedInterval = parseInt(localStorage.getItem('updateInterval'), 10);
+            if (!Number.isNaN(storedInterval) && storedInterval >= 500) {
+                this.updateInterval = storedInterval;
+            }
+        } catch (error) {
+            console.warn('Unable to load stored dashboard preferences:', error);
+        }
+    }
+
+    resolveApiBaseUrl() {
+        try {
+            const stored = localStorage.getItem('apiBaseUrl');
+            if (stored) {
+                return this.normalizeApiBaseUrl(stored);
+            }
+        } catch (error) {
+            console.warn('Unable to read stored API base URL:', error);
+        }
+
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const queryOverride = params.get('apiBaseUrl') || params.get('api');
+            if (queryOverride) {
+                return this.normalizeApiBaseUrl(queryOverride);
+            }
+        } catch (error) {
+            console.warn('Unable to parse API base URL from query string:', error);
+        }
+
+        const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
+        const rawHostname = window.location.hostname || 'localhost';
+        let hostComponent = rawHostname.trim();
+
+        if (hostComponent.includes(':') && !hostComponent.startsWith('[')) {
+            hostComponent = `[${hostComponent}]`;
+        }
+
+        return `${protocol}://${hostComponent}:8000/api`;
+    }
+
+    normalizeApiBaseUrl(url) {
+        if (!url) {
+            return 'http://localhost:8000/api';
+        }
+
+        let sanitized = url.trim();
+
+        if (!/^https?:\/\//i.test(sanitized)) {
+            sanitized = `http://${sanitized}`;
+        }
+
+        sanitized = sanitized.replace(/\/+$/, '');
+
+        if (!sanitized.toLowerCase().endsWith('/api')) {
+            sanitized = `${sanitized}/api`;
+        }
+
+        return sanitized;
+    }
+
+    isFiniteNumber(value) {
+        return typeof value === 'number' && Number.isFinite(value);
+    }
+
+    extractNumericValue(candidate) {
+        if (this.isFiniteNumber(candidate)) {
+            return candidate;
+        }
+
+        if (typeof candidate === 'string') {
+            const parsed = parseFloat(candidate);
+            if (Number.isFinite(parsed)) {
+                return parsed;
+            }
+        }
+
+        if (Array.isArray(candidate)) {
+            for (const item of candidate) {
+                const nested = this.extractNumericValue(item);
+                if (nested !== null && nested !== undefined) {
+                    return nested;
+                }
+            }
+            return null;
+        }
+
+        if (candidate && typeof candidate === 'object') {
+            if (this.isFiniteNumber(candidate.current)) {
+                return candidate.current;
+            }
+            if (this.isFiniteNumber(candidate.value)) {
+                return candidate.value;
+            }
+
+            for (const key of Object.keys(candidate)) {
+                const nested = this.extractNumericValue(candidate[key]);
+                if (nested !== null && nested !== undefined) {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    findMatchingReading(data, matchers) {
+        if (!data || typeof data !== 'object') {
+            return null;
+        }
+
+        for (const [key, value] of Object.entries(data)) {
+            const lowerKey = key.toLowerCase();
+            if (matchers.some(matcher => lowerKey.includes(matcher))) {
+                const numericValue = this.extractNumericValue(value);
+                if (numericValue !== null && numericValue !== undefined) {
+                    return numericValue;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    parsePrinterTemperatures(tempData) {
+        if (tempData === null || tempData === undefined) {
+            return { nozzle: null, bed: null };
+        }
+
+        if (this.isFiniteNumber(tempData)) {
+            return { nozzle: tempData, bed: null };
+        }
+
+        const source = typeof tempData === 'object' ? tempData : {};
+        const nozzle = this.findMatchingReading(source, ['nozzle', 'printcore', 'print_core', 'tool0', 'tool1', 'extruder']);
+        const bed = this.findMatchingReading(source, ['bed', 'build', 'plate', 'print_bed', 'heated_bed', 'buildplate']);
+
+        return { nozzle, bed };
+    }
+
+    formatDuration(totalSeconds) {
+        if (!this.isFiniteNumber(totalSeconds)) {
+            return null;
+        }
+
+        const seconds = Math.max(0, Math.round(totalSeconds));
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = seconds % 60;
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        }
+
+        if (minutes > 0) {
+            return `${minutes}m`;
+        }
+
+        return `${remainingSeconds}s`;
+    }
+
+
+    // =============================================================================
+    // CHART AND GAUGE SETUP METHODS
+    // =============================================================================
+    
+    /**
+     * Setup plain text displays instead of gauge charts
+     */
+    setupGauges() {
+        // No gauge charts - using plain text displays
+        // Text displays are updated directly in updateDashboardData()
+        console.log('Plain text displays initialized (no gauge charts)');
+    }
+
+    createGauge(canvasId, options) {
+        // Removed - using plain text instead
+        return null;
+    }
+
+    /**
+     * Setup line charts for vibration and historical data
+     */
+    setupCharts() {
+        // Vibration Chart
+        const vibCtx = document.getElementById('vibration-chart');
+        if (vibCtx) {
+            this.charts.vibration = new Chart(vibCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Bed Vibration',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4
+                    }, {
+                        label: 'Body Vibration',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Vibration (mm/s²)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Historical Data Chart
+        const historyCtx = document.getElementById('history-chart');
+        if (historyCtx) {
+            this.charts.history = new Chart(historyCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Nozzle Temp (°C)',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        yAxisID: 'y'
+                    }, {
+                        label: 'Bed Temp (°C)',
+                        data: [],
+                        borderColor: '#e67e22',
+                        backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                        yAxisID: 'y'
+                    }, {
+                        label: 'Humidity (%)',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Temperature (°C)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Humidity (%)'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // =============================================================================
+    // API COMMUNICATION METHODS
+    // =============================================================================
+    
+    /**
+     * Fetch current sensor data from API with proper error handling
+     * @returns {Object|null} Sensor data or null on error
+     */
+    async fetchSensorData() {
+        this.setLoadingState('nozzle-temp-value');
+        this.setLoadingState('bed-temp-value');
+        this.setLoadingState('humidity-value');
+
+        try {
+            const response = await fetchWithTimeout(`${this.apiBaseUrl}/sensors/current`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }, this.requestTimeoutMs);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            this.updateSensorData(data);
+            this.setConnectionStatus('sensors', true, 'Live data');
+            this.updateConnectionStatus();
+            return data;
+
+        } catch (error) {
+            console.error('Sensor API Error:', error);
+
+            let errorMessage = 'Unable to connect to sensor API';
+            if (error.name === 'AbortError') {
+                errorMessage = 'Sensor API request timed out';
+            } else if (!navigator.onLine) {
+                errorMessage = 'No network connection';
+            }
+
+            this.showSensorError(errorMessage);
+            this.updateConnectionStatus();
+            return null;
+
+        }
+    }
+
+    async fetchPrintStatus() {
+        try {
+            const response = await fetchWithTimeout(`${this.apiBaseUrl}/print/status`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }, this.requestTimeoutMs);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            this.updatePrintData(data);
+            return data;
+
+        } catch (error) {
+            console.error('Print API Error:', error);
+
+            let errorMessage = 'Unable to connect to print API';
+            if (error.name === 'AbortError') {
+                errorMessage = 'Print API request timed out';
+            } else if (!navigator.onLine) {
+                errorMessage = 'No network connection';
+            }
+
+            this.showPrintError(errorMessage);
+            return null;
+
+        }
+    }
+
+    updateSensorData(data) {
+        console.log('Received sensor data:', data);
+
+        if (!data || !data.readings) {
+            this.showSensorError('Invalid sensor data received');
+            return;
+        }
+
+        const readings = data.readings;
+
+        let tempReading = null;
+        if (readings.printer_temp && readings.printer_temp.value !== undefined) {
+            tempReading = readings.printer_temp.value;
+        } else if (readings.printer_temperature && readings.printer_temperature.value !== undefined) {
+            tempReading = readings.printer_temperature.value;
+        }
+
+        const temperatures = this.parsePrinterTemperatures(tempReading);
+
+        if (this.isFiniteNumber(temperatures.nozzle)) {
+            this.updateElement('nozzle-temp-value', `${temperatures.nozzle.toFixed(1)}°C`);
+        } else {
+            this.updateElement('nozzle-temp-value', 'N/A');
+        }
+
+        if (this.isFiniteNumber(temperatures.bed)) {
+            this.updateElement('bed-temp-value', `${temperatures.bed.toFixed(1)}°C`);
+        } else {
+            this.updateElement('bed-temp-value', 'N/A');
+        }
+
+        let envReading = null;
+        if (readings.bme280_main && readings.bme280_main.value !== undefined) {
+            envReading = readings.bme280_main.value;
+        } else if (readings.bme280 && readings.bme280.value !== undefined) {
+            envReading = readings.bme280.value;
+        }
+
+        const ambientSource = envReading && (envReading.temperature !== undefined ? envReading.temperature : envReading.temp);
+        const humiditySource = envReading && envReading.humidity !== undefined ? envReading.humidity : null;
+        const pressureSource = envReading && envReading.pressure !== undefined ? envReading.pressure : null;
+
+        const ambientTemp = this.extractNumericValue(ambientSource);
+        const humidity = this.extractNumericValue(humiditySource);
+        const pressure = this.extractNumericValue(pressureSource);
+
+        if (this.isFiniteNumber(ambientTemp)) {
+            this.updateElement('ambient-temp-value', `${ambientTemp.toFixed(1)}°C`);
+        } else {
+            this.updateElement('ambient-temp-value', 'N/A');
+        }
+
+        if (this.isFiniteNumber(humidity)) {
+            this.updateElement('humidity-value', `${humidity.toFixed(1)}%`);
+        } else {
+            this.updateElement('humidity-value', 'N/A');
+        }
+
+        if (this.isFiniteNumber(pressure)) {
+            this.updateElement('pressure-value', `${pressure.toFixed(1)} hPa`);
+        } else {
+            this.updateElement('pressure-value', 'N/A');
+        }
+
+        const bedValue = readings.mpu6050_bed && readings.mpu6050_bed.value !== undefined ? readings.mpu6050_bed.value : null;
+        const bodyValue = readings.mpu6050_body && readings.mpu6050_body.value !== undefined ? readings.mpu6050_body.value : null;
+        const bedExtracted = this.extractNumericValue(bedValue);
+        const bodyExtracted = this.extractNumericValue(bodyValue);
+        const bedVibration = this.isFiniteNumber(bedExtracted) ? Math.abs(bedExtracted) : null;
+        const bodyVibration = this.isFiniteNumber(bodyExtracted) ? Math.abs(bodyExtracted) : null;
+
+        if (this.isFiniteNumber(bedVibration)) {
+            this.updateElement('bed-vibration-value', `${bedVibration.toFixed(2)} mm/s²`);
+        } else {
+            this.updateElement('bed-vibration-value', 'N/A');
+        }
+
+        if (this.isFiniteNumber(bodyVibration)) {
+            this.updateElement('body-vibration-value', `${bodyVibration.toFixed(2)} mm/s²`);
+        } else {
+            this.updateElement('body-vibration-value', 'N/A');
+        }
+
+        this.addToHistory({
+            temperature: temperatures,
+            humidity
+        });
+        this.updateHistoryChart();
+        this.updateVibrationChart(bedVibration, bodyVibration);
+        this.setConnectionStatus('sensors', true, 'Live data');
+    }
+
+    updatePrintData(data) {
+        console.log('Received print data:', data);
+
+        if (!data) {
+            this.showPrintError('Invalid print data received');
+            return;
+        }
+
+        const jobName = data.job_name || data.name || 'No active job';
+        this.updateElement('job-name', jobName);
+
+        const stateValue = (data.state || data.status || 'offline').toString().toUpperCase();
+        this.updateElement('job-status', stateValue);
+
+        const rawProgress = typeof data.progress === 'number' ? data.progress : 0;
+        const progressPercent = rawProgress > 1 ? rawProgress : rawProgress * 100;
+        const safeProgress = Math.min(100, Math.max(0, progressPercent));
+        this.updateElement('job-progress', `${safeProgress.toFixed(1)}%`);
+
+        let remainingSeconds = null;
+        if (this.isFiniteNumber(data.time_remaining)) {
+            remainingSeconds = data.time_remaining;
+        } else if (this.isFiniteNumber(data.time_total) && this.isFiniteNumber(data.time_elapsed)) {
+            remainingSeconds = data.time_total - data.time_elapsed;
+        }
+
+        if (this.isFiniteNumber(remainingSeconds)) {
+            const formatted = this.formatDuration(remainingSeconds);
+            this.updateElement('time-remaining', formatted || '--');
+        } else {
+            this.updateElement('time-remaining', '--');
+        }
+
+        this.updateElement('quality-value', 'N/A');
+        this.updateElement('ml-prediction', 'Monitoring...');
+
+        if (data.report_ready) {
+            this.latestReportJobId = data.job_uuid || null;
+            const label = data.report_path ? 'Available (saved)' : 'Available';
+            this.updateElement('print-report-status', label, 'success');
+        } else {
+            this.latestReportJobId = data.job_uuid || null;
+            const stateLabel = (data.state || '').toLowerCase();
+            const pendingLabel = stateLabel === 'printing' ? 'Generating...' : 'Not Ready';
+            this.updateElement('print-report-status', pendingLabel);
+        }
+
+        this.setConnectionStatus('print', true, stateValue);
+    }
+
+    calculateVibrationMagnitude(vibData) {
+        if (!vibData || typeof vibData.x !== 'number') return 0;
+        return Math.sqrt(
+            Math.pow(vibData.x, 2) + 
+            Math.pow(vibData.y, 2) + 
+            Math.pow(vibData.z, 2)
+        );
+    }
+
+    addToHistory(data) {
+        if (!data) {
+            return;
+        }
+
+        const timestamp = new Date();
+        const nozzleTemp = data.temperature && this.isFiniteNumber(data.temperature.nozzle) ? data.temperature.nozzle : null;
+        const bedTemp = data.temperature && this.isFiniteNumber(data.temperature.bed) ? data.temperature.bed : null;
+        const humidity = this.isFiniteNumber(data.humidity) ? data.humidity : null;
+
+        if (nozzleTemp === null && bedTemp === null && humidity === null) {
+            return;
+        }
+
+        this.sensorHistory.push({
+            timestamp,
+            nozzleTemp,
+            bedTemp,
+            humidity
+        });
+
+        if (this.sensorHistory.length > this.maxHistoryPoints) {
+            this.sensorHistory.shift();
+        }
+    }
+
+    updateVibrationChart(bedVib, bodyVib) {
+        if (!this.charts.vibration) return;
+
+        if (!this.isFiniteNumber(bedVib) && !this.isFiniteNumber(bodyVib)) {
+            return;
+        }
+
+        const timestamp = new Date().toLocaleTimeString();
+        const chart = this.charts.vibration;
+
+        chart.data.labels.push(timestamp);
+        chart.data.datasets[0].data.push(this.isFiniteNumber(bedVib) ? bedVib : null);
+        chart.data.datasets[1].data.push(this.isFiniteNumber(bodyVib) ? bodyVib : null);
+
+        if (chart.data.labels.length > 20) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[1].data.shift();
+        }
+
+        chart.update('none');
+    }
+
+    updateHistoryChart() {
+        if (!this.charts.history || this.sensorHistory.length === 0) return;
+
+        const chart = this.charts.history;
+        const labels = this.sensorHistory.map(point => point.timestamp.toLocaleTimeString());
+        
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = this.sensorHistory.map(point => point.nozzleTemp);
+        chart.data.datasets[1].data = this.sensorHistory.map(point => point.bedTemp);
+        chart.data.datasets[2].data = this.sensorHistory.map(point => point.humidity);
+
+        chart.update('none');
+    }
+
+    setConnectionStatus(type, connected, details = '') {
+        this.isConnected[type] = connected;
+        this.showConnectionStatus(type, connected, details);
+    }
+
+    updateConnectionStatus() {
+        this.updateElement('last-update', new Date().toLocaleTimeString());
+    }
+
+    showSensorError(message) {
+        this.updateElement('nozzle-temp-value', 'API Error', 'error');
+        this.updateElement('bed-temp-value', 'API Error', 'error');
+        this.updateElement('humidity-value', 'API Error', 'error');
+        this.updateElement('pressure-value', 'API Error', 'error');
+        this.updateElement('ambient-temp-value', 'API Error', 'error');
+        this.updateElement('bed-vibration-value', 'API Error', 'error');
+        this.updateElement('body-vibration-value', 'API Error', 'error');
+        this.setConnectionStatus('sensors', false, message || 'Connection error');
+    }
+
+    showPrintError(message) {
+        this.updateElement('job-name', 'API Connection Failed', 'error');
+        this.updateElement('job-status', 'Disconnected', 'error');
+        this.updateElement('job-progress', 'API Error', 'error');
+        this.updateElement('time-remaining', 'No Connection', 'error');
+        this.updateElement('quality-value', 'API Error', 'error');
+        this.updateElement('ml-prediction', 'No connection', 'error');
+        this.latestReportJobId = null;
+        this.updateElement('print-report-status', 'Unavailable', 'error');
+        this.setConnectionStatus('print', false, message || 'Connection error');
+        this.showQualityError();
+    }
+
+    showAnalysisError() {
+        this.updateElement('correlation-status', 'API Not Connected');
+        this.updateElement('anomaly-count', 'No Data Available');
+        this.updateElement('prediction-accuracy', 'API Error');
+        this.updateElement('process-capability', 'No Connection');
+        this.updateElement('ml-confidence', 'API Error');
+        this.updateElement('training-accuracy', 'No Data');
+        this.updateElement('failure-risk', 'API Not Available');
+        this.updateElement('quality-risk', 'No Connection');
+    }
+
+    showHealthError() {
+        this.updateElement('cpu-temp', 'API Error');
+        this.updateElement('memory-usage', 'API Error');
+        this.updateElement('disk-usage', 'API Error');
+        this.updateElement('network-status', 'Disconnected');
+        this.updateElement('bme280-status', 'API Error');
+        this.updateElement('mpu-bed-status', 'API Error');
+        this.updateElement('mpu-body-status', 'API Error');
+        this.updateElement('laser-status', 'API Error');
+    }
+
+    showQualityError() {
+        this.updateElement('overall-quality', 'API Not Available');
+        this.updateElement('successful-prints', 'No Data');
+        this.updateElement('avg-print-time', 'API Error');
+        this.updateElement('material-efficiency', 'No Connection');
+        this.updateElement('critical-failures', 'API Error');
+        this.updateElement('medium-risk', 'API Error');
+        this.updateElement('low-risk', 'API Error');
+        this.updateElement('rpn-average', 'No Data');
+    }
+
+    showMaintenanceError() {
+        this.updateElement('next-calibration', 'API Error');
+        this.updateElement('sensor-cleaning', 'No Data Available');
+        this.updateElement('filter-replacement', 'API Error');
+        this.updateElement('system-backup', 'API Not Connected');
+        this.updateElement('last-bme280-cal', 'API Error');
+        this.updateElement('last-mpu-cal', 'API Error');
+        this.updateElement('laser-check', 'No Data');
+        this.updateElement('drift-compensation', 'API Error');
+    }
+
+    // =============================================================================
+    // UI UPDATE AND STATE MANAGEMENT METHODS
+    // =============================================================================
+    
+    /**
+     * Update DOM element with value and optional CSS class
+     * @param {string} id - Element ID
+     * @param {string} value - Text content to set
+     * @param {string} className - Optional CSS class to add
+     */
+    updateElement(id, value, className = '') {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+            
+            // Remove existing state classes
+            element.classList.remove('loading', 'error', 'success');
+            
+            // Add new class if specified
+            if (className) {
+                element.classList.add(className);
+            }
+        }
+    }
+
+    setLoadingState(id, loading = true) {
+        const element = document.getElementById(id);
+        if (element) {
+            if (loading) {
+                element.classList.add('loading');
+                element.textContent = 'Loading...';
+            } else {
+                element.classList.remove('loading');
+            }
+        }
+    }
+
+    showConnectionStatus(type, connected, details = '') {
+        const idMap = {
+            sensors: 'sensor',
+            sensor: 'sensor',
+            print: 'print',
+            printer: 'print'
+        };
+
+        const prefix = idMap[type] || type;
+        const statusDot = document.getElementById(`${prefix}-status`);
+        const statusText = document.getElementById(`${prefix}-connection`);
+
+        if (statusDot) {
+            statusDot.className = `status-dot ${connected ? 'connected' : 'disconnected'}`;
+            statusDot.setAttribute('aria-label', connected ? 'Connected' : 'Disconnected');
+        }
+
+        if (statusText) {
+            const status = connected ? 'Connected' : 'Disconnected';
+            statusText.textContent = details ? `${status} - ${details}` : status;
+            statusText.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
+        }
+    }
+
+    showAlert(message, type = 'error') {
+        const alert = document.getElementById(`${type}-alert`);
+        if (alert) {
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
+    }
+
+    startDataFetching(initialRun = false) {
+        const firstRun = !this.hasInitializedPolling;
+        const shouldTriggerImmediateFetch = initialRun || firstRun;
+
+        if (shouldTriggerImmediateFetch) {
+            this.fetchSensorData();
+            this.fetchPrintStatus();
+
+            if (firstRun) {
+                this.showAnalysisError();
+                this.showHealthError();
+                this.showQualityError();
+                this.showMaintenanceError();
+            }
+        }
+
+        if (this.pollingHandles.sensors) {
+            clearInterval(this.pollingHandles.sensors);
+        }
+        if (this.pollingHandles.print) {
+            clearInterval(this.pollingHandles.print);
+        }
+
+        this.pollingHandles.sensors = setInterval(() => {
+            this.fetchSensorData();
+            this.updateConnectionStatus();
+        }, this.updateInterval);
+
+        this.pollingHandles.print = setInterval(() => {
+            this.fetchPrintStatus();
+        }, this.printStatusIntervalMs);
+
+        this.hasInitializedPolling = true;
+    }
+}
+
+// =============================================================================
+// CONTROL FUNCTIONS - System Control Actions
+// =============================================================================
+
+/**
+ * Emergency stop function - immediately halts printer operation
+ */
+async function emergencyStop() {
+    dashboard.showAlert('Emergency stop activated!', 'error');
+    try {
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/controls/emergency_stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        dashboard.showAlert('Emergency stop successful', 'success');
+    } catch (error) {
+        console.error('Emergency stop failed:', error);
+        const message = error.name === 'AbortError' ? 'Emergency stop timed out' : 'Unable to trigger emergency stop';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function pauseResume() {
+    try {
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/controls/pause_resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json().catch(() => null);
+        dashboard.showAlert(data?.message || 'Pause/Resume command sent', 'success');
+    } catch (error) {
+        console.error('Pause/Resume failed:', error);
+        const message = error.name === 'AbortError' ? 'Pause/Resume request timed out' : 'Unable to send pause/resume command';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function calibrateSensors() {
+    dashboard.showAlert('Starting sensor calibration...', 'success');
+    try {
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/controls/calibrate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json().catch(() => null);
+        dashboard.showAlert(data?.message || 'Sensor calibration initiated', 'success');
+    } catch (error) {
+        console.error('Calibration failed:', error);
+        const message = error.name === 'AbortError' ? 'Calibration request timed out' : 'Unable to start calibration';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function exportData() {
+    try {
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/data/export`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `navair_data_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        dashboard.showAlert('Data export completed', 'success');
+    } catch (error) {
+        console.error('Export failed:', error);
+        const message = error.name === 'AbortError' ? 'Data export timed out' : 'Unable to export data';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function downloadPrintReport() {
+    if (!dashboard) {
+        return;
+    }
+
+    const jobId = dashboard.latestReportJobId;
+    const endpoint = jobId
+        ? `${dashboard.apiBaseUrl}/jobs/${jobId}/report?download=true`
+        : `${dashboard.apiBaseUrl}/jobs/latest/report?download=true`;
+
+    try {
+        const response = await fetchWithTimeout(endpoint, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        const fallback = `print_report_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        const filename = match && match[1] ? match[1] : fallback;
+
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        dashboard.showAlert('Print report downloaded', 'success');
+    } catch (error) {
+        console.error('Report download failed:', error);
+        const message = error.name === 'AbortError' ? 'Report download timed out' : 'Unable to download report';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+// =============================================================================
+// PAGE NAVIGATION SYSTEM
+// =============================================================================
+
+/**
+ * Show specified page and update navigation state
+ * @param {string} pageId - ID of page to show
+ * @param {HTMLElement} element - Navigation element that was clicked
+ */
+function showPage(pageId, element) {
+    // Hide all pages and update ARIA attributes
+    const pages = document.querySelectorAll('.page');
+    pages.forEach(page => {
+        page.classList.remove('active');
+        page.setAttribute('aria-hidden', 'true');
+    });
+    
+    // Show selected page
+    const selectedPage = document.getElementById(pageId + '-page');
+    if (selectedPage) {
+        selectedPage.classList.add('active');
+        selectedPage.setAttribute('aria-hidden', 'false');
+    }
+    
+    // Update navigation ARIA attributes
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+        item.classList.remove('active');
+        item.setAttribute('aria-selected', 'false');
+        item.setAttribute('tabindex', '-1');
+    });
+    
+    if (element) {
+        element.classList.add('active');
+        element.setAttribute('aria-selected', 'true');
+        element.setAttribute('tabindex', '0');
+    }
+    
+    // Initialize page-specific content
+    initializePage(pageId);
+    
+    // Update page title
+    updatePageTitle(pageId);
+}
+
+function updatePageTitle(pageId) {
+    const titles = {
+        'dashboard': 'Dashboard',
+        'analysis': 'Analysis',
+        'health': 'System Health',
+        'quality': 'Quality Reports',
+        'maintenance': 'Maintenance',
+        'settings': 'Settings'
+    };
+    document.title = `NAVAIR Monitor - ${titles[pageId] || 'Dashboard'}`;
+}
+
+function initializePage(pageId) {
+    switch(pageId) {
+        case 'analysis':
+            setupAnalysisCharts();
+            break;
+        case 'health':
+            setupHealthMonitoring();
+            break;
+        case 'quality':
+            setupQualityCharts();
+            break;
+        case 'maintenance':
+            updateMaintenanceStatus();
+            break;
+        case 'settings':
+            loadSettings();
+            break;
+    }
+}
+
+// Analysis Page Functions
+function setupAnalysisCharts() {
+    // Correlation Chart
+    const correlationCtx = document.getElementById('correlation-chart');
+    if (correlationCtx && !correlationCtx.chart) {
+        correlationCtx.chart = new Chart(correlationCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Temperature vs Quality',
+                    data: generateCorrelationData(),
+                    backgroundColor: 'rgba(52, 152, 219, 0.5)',
+                    borderColor: '#3498db'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Quality Score'
+                        },
+                        min: 0,
+                        max: 1
+                    }
+                }
+            }
+        });
+    }
+    
+    // ML Performance Chart  
+    const mlCtx = document.getElementById('ml-performance-chart');
+    if (mlCtx && !mlCtx.chart) {
+        mlCtx.chart = new Chart(mlCtx, {
+            type: 'line',
+            data: {
+                labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
+                datasets: [{
+                    label: 'Accuracy',
+                    data: [85, 87, 89, 92, 94, 96, 96.4],
+                    borderColor: '#27ae60',
+                    backgroundColor: 'rgba(39, 174, 96, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 80,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Accuracy (%)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+function generateCorrelationData() {
+    // Only generate data if APIs are connected
+    if (!dashboard || (!dashboard.isConnected.sensors && !dashboard.isConnected.print)) {
+        return [{ x: 0, y: 0, label: 'No API Connection' }];
+    }
+    
+    // Use actual historical data if available
+    if (dashboard.sensorHistory.length > 0) {
+        return dashboard.sensorHistory.map(point => ({
+            x: point.nozzleTemp || 0,
+            y: (point.qualityScore || 0) / 100
+        }));
+    }
+    
+    return [{ x: 0, y: 0, label: 'No Historical Data' }];
+}
+
+// Health Monitoring Functions
+function setupHealthMonitoring() {
+    updateSystemHealth();
+    
+    const perfCtx = document.getElementById('performance-chart');
+    if (perfCtx && !perfCtx.chart) {
+        perfCtx.chart = new Chart(perfCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage (%)',
+                    data: [],
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)'
+                }, {
+                    label: 'Memory Usage (%)',
+                    data: [],
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Usage (%)'
+                        }
+                    }
+                }
+            }
+        });
+
+        updatePerformanceChart(perfCtx.chart);
+    }
+}
+
+async function updateSystemHealth() {
+    if (!dashboard) {
+        return;
+    }
+
+    const headers = { 'Accept': 'application/json' };
+    const timeoutMs = dashboard.requestTimeoutMs;
+
+    let performanceData = null;
+    let performanceError = null;
+
+    try {
+        performanceData = await fetchJsonWithTimeout(
+            `${dashboard.apiBaseUrl}/system/performance`,
+            { method: 'GET', headers },
+            timeoutMs
+        );
+    } catch (error) {
+        performanceError = error;
+        console.error('System Performance API Error:', error);
+    }
+
+    if (performanceData) {
+        const temperature = dashboard.extractNumericValue(performanceData.temperature);
+        const memoryMetric = dashboard.extractNumericValue(performanceData.memory_usage ?? performanceData.memory_percent);
+        const diskMetric = dashboard.extractNumericValue(performanceData.disk_usage_percent);
+
+        const tempValue = dashboard.isFiniteNumber(temperature)
+            ? `${temperature.toFixed(1)}°C`
+            : 'No Data';
+        const memoryValue = dashboard.isFiniteNumber(memoryMetric)
+            ? `${memoryMetric.toFixed(1)}%`
+            : 'No Data';
+        const diskValue = dashboard.isFiniteNumber(diskMetric)
+            ? `${diskMetric.toFixed(1)}%`
+            : 'No Data';
+
+        dashboard.updateElement('cpu-temp', tempValue);
+        dashboard.updateElement('memory-usage', memoryValue);
+        dashboard.updateElement('disk-usage', diskValue);
+    } else {
+        const label = performanceError && performanceError.name === 'AbortError' ? 'Timeout' : 'API Error';
+        dashboard.updateElement('cpu-temp', label, 'error');
+        dashboard.updateElement('memory-usage', label, 'error');
+        dashboard.updateElement('disk-usage', label, 'error');
+    }
+
+    try {
+        const healthData = await fetchJsonWithTimeout(
+            `${dashboard.apiBaseUrl}/system/health`,
+            { method: 'GET', headers },
+            timeoutMs
+        );
+        applySystemHealthDetails(healthData);
+    } catch (error) {
+        console.error('System Health API Error:', error);
+        applySystemHealthDetails(null, error);
+    }
+}
+
+async function updatePerformanceChart(chart) {
+    if (!chart || !dashboard) {
+        return;
+    }
+
+    try {
+        const data = await fetchJsonWithTimeout(
+            `${dashboard.apiBaseUrl}/system/performance`,
+            { method: 'GET', headers: { 'Accept': 'application/json' } },
+            dashboard.requestTimeoutMs
+        );
+
+        const timestamp = new Date().toLocaleTimeString();
+        const cpuUsagePrimary = dashboard.extractNumericValue(data.cpu_usage);
+        const cpuUsageFallback = dashboard.extractNumericValue(data.cpu_percent);
+        const memoryUsagePrimary = dashboard.extractNumericValue(data.memory_usage);
+        const memoryUsageFallback = dashboard.extractNumericValue(data.memory_percent);
+
+        const cpuUsage = dashboard.isFiniteNumber(cpuUsagePrimary)
+            ? cpuUsagePrimary
+            : (dashboard.isFiniteNumber(cpuUsageFallback) ? cpuUsageFallback : null);
+        const memoryUsage = dashboard.isFiniteNumber(memoryUsagePrimary)
+            ? memoryUsagePrimary
+            : (dashboard.isFiniteNumber(memoryUsageFallback) ? memoryUsageFallback : null);
+
+        if (cpuUsage === null && memoryUsage === null) {
+            return;
+        }
+
+        chart.data.labels.push(timestamp);
+        chart.data.datasets[0].data.push(cpuUsage);
+        chart.data.datasets[1].data.push(memoryUsage);
+
+        const maxPoints = 50;
+        while (chart.data.labels.length > maxPoints) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[1].data.shift();
+        }
+
+        chart.update('none');
+    } catch (error) {
+        console.error('Performance Chart Error:', error);
+    }
+}
+
+// Quality Page Functions
+function setupQualityCharts() {
+    const qualityCtx = document.getElementById('quality-distribution-chart');
+    if (qualityCtx && !qualityCtx.chart) {
+        qualityCtx.chart = new Chart(qualityCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Excellent', 'Good', 'Fair', 'Poor'],
+                datasets: [{
+                    data: [65, 25, 8, 2],
+                    backgroundColor: [
+                        '#27ae60',
+                        '#f39c12', 
+                        '#e67e22',
+                        '#e74c3c'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Maintenance Functions
+async function updateMaintenanceStatus() {
+    // Fetch real maintenance data from API
+    if (!dashboard) {
+        return;
+    }
+
+    try {
+        const response = await fetchJsonWithTimeout(
+            `${dashboard.apiBaseUrl}/system/health`,
+            { method: 'GET', headers: { 'Accept': 'application/json' } },
+            dashboard.requestTimeoutMs
+        );
+
+        // Update maintenance schedule data if available
+        if (response && response.maintenance) {
+            dashboard.updateElement('next-calibration', response.maintenance.next_calibration || 'Not scheduled');
+            dashboard.updateElement('sensor-cleaning', response.maintenance.sensor_cleaning || 'Not due');
+            dashboard.updateElement('filter-replacement', response.maintenance.filter_replacement || 'Not due');
+            dashboard.updateElement('system-backup', response.maintenance.system_backup || 'Not configured');
+        }
+
+        console.log('Maintenance status updated');
+    } catch (error) {
+        console.error('Failed to fetch maintenance status:', error);
+        dashboard.showMaintenanceError();
+    }
+}
+
+async function startCalibration() {
+    if (!dashboard) {
+        return;
+    }
+
+    if (!confirm('Start sensor calibration? This may take several minutes and will pause data collection.')) {
+        return;
+    }
+
+    dashboard.showAlert('Starting sensor calibration...', 'success');
+
+    try {
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/controls/calibrate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }, dashboard.requestTimeoutMs * 3);  // Longer timeout for calibration
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json().catch(() => null);
+        dashboard.showAlert(data?.message || 'Sensor calibration completed successfully', 'success');
+    } catch (error) {
+        console.error('Calibration failed:', error);
+        const message = error.name === 'AbortError'
+            ? 'Calibration request timed out. Process may still be running.'
+            : 'Unable to start calibration';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function runDiagnostics() {
+    if (!dashboard) {
+        return;
+    }
+
+    dashboard.showAlert('Running system diagnostics...', 'success');
+
+    try {
+        // Use system health endpoint to check all components
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/system/health`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Generate diagnostic report
+        let issues = [];
+        if (data.components && data.components.sensors) {
+            const sensors = data.components.sensors.details || {};
+            Object.entries(sensors).forEach(([id, status]) => {
+                if (!status.connected) {
+                    issues.push(`Sensor ${id}: Disconnected`);
+                }
+            });
+        }
+
+        if (issues.length === 0) {
+            dashboard.showAlert('Diagnostics complete: All systems healthy', 'success');
+        } else {
+            dashboard.showAlert(`Diagnostics complete: ${issues.length} issue(s) found`, 'error');
+            console.warn('System issues:', issues);
+        }
+    } catch (error) {
+        console.error('Diagnostics failed:', error);
+        const message = error.name === 'AbortError'
+            ? 'Diagnostics request timed out'
+            : 'Unable to run diagnostics';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function backupSystem() {
+    if (!dashboard) {
+        return;
+    }
+
+    if (!confirm('Create a system backup? This will export all sensor data and configuration.')) {
+        return;
+    }
+
+    dashboard.showAlert('Starting system backup...', 'success');
+
+    try {
+        // Use data export endpoint for backup
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/data/export`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        }, dashboard.requestTimeoutMs * 2);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `navair_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+
+        dashboard.showAlert('System backup completed and downloaded', 'success');
+    } catch (error) {
+        console.error('Backup failed:', error);
+        const message = error.name === 'AbortError'
+            ? 'Backup request timed out'
+            : 'Unable to create system backup';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+async function generateReport() {
+    if (!dashboard) {
+        return;
+    }
+
+    dashboard.showAlert('Generating maintenance report...', 'success');
+
+    try {
+        // Try to get the latest print job report
+        const response = await fetchWithTimeout(`${dashboard.apiBaseUrl}/jobs/latest/report`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        }, dashboard.requestTimeoutMs);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `maintenance_report_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+
+        dashboard.showAlert('Maintenance report generated and downloaded', 'success');
+    } catch (error) {
+        console.error('Report generation failed:', error);
+        const message = error.name === 'AbortError'
+            ? 'Report generation timed out'
+            : 'Unable to generate report. No recent print jobs may be available.';
+        dashboard.showAlert(message, 'error');
+    }
+}
+
+// Settings Functions
+
+function resolveTimeout(timeoutMs) {
+    if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
+        return timeoutMs;
+    }
+    if (typeof dashboard !== 'undefined' && dashboard && typeof dashboard.requestTimeoutMs === 'number') {
+        return dashboard.requestTimeoutMs;
+    }
+    return 5000;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), resolveTimeout(timeoutMs));
+
+    try {
+        const { signal, ...rest } = options || {};
+        if (signal) {
+            console.warn('fetchWithTimeout: overriding provided AbortSignal');
+        }
+        return await fetch(url, { ...rest, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 5000) {
+    const response = await fetchWithTimeout(url, options, timeoutMs);
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+function formatStatusLabel(value) {
+    if (value === null || value === undefined) {
+        return 'Unknown';
+    }
+
+    return value
+        .toString()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function updateSensorStatus(elementId, detail) {
+    if (!dashboard) {
+        return;
+    }
+
+    if (!detail) {
+        dashboard.updateElement(elementId, 'Unavailable', 'error');
+        return;
+    }
+
+    if (detail.connected) {
+        dashboard.updateElement(elementId, 'Connected', 'success');
+    } else {
+        const statusLabel = formatStatusLabel(detail.status || 'disconnected');
+        dashboard.updateElement(elementId, statusLabel, 'error');
+    }
+}
+
+function applySystemHealthDetails(healthData, error) {
+    if (!dashboard) {
+        return;
+    }
+
+    const errorLabel = error && error.name === 'AbortError' ? 'Timeout' : 'API Error';
+    const browserOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    if (!healthData || !healthData.components) {
+        const networkText = browserOffline ? 'Offline (Browser)' : (error ? errorLabel : 'No Data');
+        const networkClass = browserOffline || error ? 'error' : '';
+        dashboard.updateElement('network-status', networkText, networkClass);
+        dashboard.updateElement('bme280-status', errorLabel, 'error');
+        dashboard.updateElement('mpu-bed-status', errorLabel, 'error');
+        dashboard.updateElement('mpu-body-status', errorLabel, 'error');
+        dashboard.updateElement('laser-status', errorLabel, 'error');
+        return;
+    }
+
+    const browserOnline = !browserOffline;
+    const printerComponent = healthData.components.printer;
+    const sensorComponent = healthData.components.sensors;
+    const sensorDetails = sensorComponent?.details || {};
+
+    updateSensorStatus('bme280-status', sensorDetails.bme280_main);
+    updateSensorStatus('mpu-bed-status', sensorDetails.mpu6050_bed);
+    updateSensorStatus('mpu-body-status', sensorDetails.mpu6050_body);
+
+    const laserSensorIds = ['laser_x_array', 'laser_y_array'];
+    const laserConnected = laserSensorIds.filter(id => sensorDetails[id]?.connected).length;
+    if (laserSensorIds.length) {
+        const label = `${laserConnected}/${laserSensorIds.length} Connected`;
+        const className = laserConnected === laserSensorIds.length ? 'success' : 'error';
+        dashboard.updateElement('laser-status', label, className);
+    } else {
+        dashboard.updateElement('laser-status', 'Not Installed');
+    }
+
+    let networkLabel = browserOnline ? 'Online' : 'Offline (Browser)';
+    let networkClass = browserOnline ? '' : 'error';
+
+    if (browserOnline && printerComponent) {
+        const printerStatus = formatStatusLabel(printerComponent.status || (printerComponent.connected ? 'healthy' : 'offline'));
+        networkLabel = printerComponent.connected
+            ? `Online - Printer ${printerStatus}`
+            : `Online - Printer ${printerStatus}`;
+        networkClass = printerComponent.connected ? 'success' : 'error';
+    } else if (browserOnline && healthData.overall_status) {
+        const overall = formatStatusLabel(healthData.overall_status);
+        networkLabel = `Online - ${overall}`;
+        networkClass = healthData.overall_status === 'healthy' ? 'success' : (healthData.overall_status === 'degraded' ? 'error' : '');
+    }
+
+    dashboard.updateElement('network-status', networkLabel, networkClass);
+}
+
+function refreshDashboardConfiguration(forceReset = false) {
+    if (!dashboard) {
+        return;
+    }
+
+    dashboard.loadPersistedPreferences();
+    dashboard.apiBaseUrl = dashboard.resolveApiBaseUrl();
+
+    if (forceReset) {
+        dashboard.hasInitializedPolling = false;
+    }
+
+    dashboard.startDataFetching(true);
+}
+
+function loadSettings() {
+    // Load saved settings from localStorage
+    const updateInterval = localStorage.getItem('updateInterval') || '2000';
+    const tempUnits = localStorage.getItem('tempUnits') || 'celsius';
+    const alertSounds = localStorage.getItem('alertSounds') !== 'false';
+    const autoExport = localStorage.getItem('autoExport') === 'true';
+    const theme = localStorage.getItem('theme') || 'blue';
+    const defaultPage = localStorage.getItem('defaultPage') || 'dashboard';
+    const apiBaseOverride = localStorage.getItem('apiBaseUrl') || '';
+
+    const updateIntervalSelect = document.getElementById('update-interval');
+    const tempUnitsSelect = document.getElementById('temp-units');
+    const alertSoundsCheckbox = document.getElementById('alert-sounds');
+    const autoExportCheckbox = document.getElementById('auto-export');
+    const themeSelect = document.getElementById('theme');
+    const defaultPageSelect = document.getElementById('default-page');
+    const apiBaseInput = document.getElementById('api-base-url');
+    
+    if (updateIntervalSelect) updateIntervalSelect.value = updateInterval;
+    if (tempUnitsSelect) tempUnitsSelect.value = tempUnits;
+    if (alertSoundsCheckbox) alertSoundsCheckbox.checked = alertSounds;
+    if (autoExportCheckbox) autoExportCheckbox.checked = autoExport;
+    if (themeSelect) themeSelect.value = theme;
+    if (defaultPageSelect) defaultPageSelect.value = defaultPage;
+
+    if (apiBaseInput) {
+        apiBaseInput.value = apiBaseOverride;
+        if (typeof dashboard !== 'undefined' && dashboard) {
+            apiBaseInput.placeholder = dashboard.resolveApiBaseUrl();
+        } else {
+            apiBaseInput.placeholder = 'http://localhost:8000/api';
+        }
+    }
+}
+
+function saveSettings() {
+    const updateIntervalRaw = document.getElementById('update-interval')?.value || '2000';
+    const tempUnits = document.getElementById('temp-units')?.value || 'celsius';
+    const alertSounds = document.getElementById('alert-sounds')?.checked ?? true;
+    const autoExport = document.getElementById('auto-export')?.checked ?? false;
+    const theme = document.getElementById('theme')?.value || 'blue';
+    const defaultPage = document.getElementById('default-page')?.value || 'dashboard';
+    const apiBaseInput = document.getElementById('api-base-url');
+
+    const parsedInterval = Math.max(500, parseInt(updateIntervalRaw, 10) || 2000);
+
+    localStorage.setItem('updateInterval', parsedInterval.toString());
+    localStorage.setItem('tempUnits', tempUnits);
+    localStorage.setItem('alertSounds', alertSounds);
+    localStorage.setItem('autoExport', autoExport);
+    localStorage.setItem('theme', theme);
+    localStorage.setItem('defaultPage', defaultPage);
+
+    if (apiBaseInput) {
+        const rawValue = apiBaseInput.value.trim();
+        if (rawValue) {
+            const normalized = dashboard ? dashboard.normalizeApiBaseUrl(rawValue) : rawValue;
+            localStorage.setItem('apiBaseUrl', normalized);
+            apiBaseInput.value = normalized;
+        } else {
+            localStorage.removeItem('apiBaseUrl');
+            apiBaseInput.placeholder = dashboard ? dashboard.resolveApiBaseUrl() : 'http://localhost:8000/api';
+        }
+    }
+
+    refreshDashboardConfiguration();
+    alert('Settings saved successfully!');
+}
+
+function resetSettings() {
+    if (confirm('Are you sure you want to reset all settings to default?')) {
+        localStorage.clear();
+        loadSettings();
+        refreshDashboardConfiguration(true);
+        alert('Settings reset to default values');
+    }
+}
+
+function exportSettings() {
+    const settings = {
+        updateInterval: document.getElementById('update-interval')?.value || '2000',
+        tempUnits: document.getElementById('temp-units')?.value || 'celsius',
+        alertSounds: document.getElementById('alert-sounds')?.checked ?? true,
+        autoExport: document.getElementById('auto-export')?.checked ?? false,
+        theme: document.getElementById('theme')?.value || 'blue',
+        defaultPage: document.getElementById('default-page')?.value || 'dashboard',
+        apiBaseUrl: document.getElementById('api-base-url')?.value || ''
+    };
+    
+    const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'navair_settings.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function importSettings() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const settings = JSON.parse(e.target.result);
+                    Object.keys(settings).forEach(key => {
+                        localStorage.setItem(key, settings[key]);
+                    });
+                    loadSettings();
+                    refreshDashboardConfiguration();
+                    alert('Settings imported successfully!');
+                } catch (error) {
+                    alert('Error importing settings: Invalid file format');
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+    input.click();
+}
+
+// =============================================================================
+// APPLICATION INITIALIZATION
+// =============================================================================
+
+/**
+ * Initialize dashboard when DOM is loaded
+ */
+let dashboard;
+document.addEventListener('DOMContentLoaded', () => {
+    dashboard = new NAVAIRDashboard();
+    
+    // Setup navigation event listeners
+    setupNavigation();
+    
+    // Load default page from settings
+    const defaultPage = localStorage.getItem('defaultPage') || 'dashboard';
+    if (defaultPage !== 'dashboard') {
+        setTimeout(() => {
+            const navItem = document.querySelector(`[data-page="${defaultPage}"]`);
+            if (navItem) {
+                showPage(defaultPage, navItem);
+            }
+        }, 100);
+    }
+    
+    // Setup periodic health updates
+    setInterval(() => {
+        const healthPage = document.getElementById('health-page');
+        if (healthPage && healthPage.classList.contains('active')) {
+            updateSystemHealth();
+            const perfCanvas = document.getElementById('performance-chart');
+            if (perfCanvas && perfCanvas.chart) {
+                updatePerformanceChart(perfCanvas.chart);
+            }
+        }
+    }, 5000);
+    
+    // Add keyboard navigation support
+    setupKeyboardNavigation();
+});
+
+function setupNavigation() {
+    const navItems = document.querySelectorAll('.nav-item[data-page]');
+    navItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const pageId = item.getAttribute('data-page');
+            showPage(pageId, item);
+        });
+        
+        // Add keyboard support
+        item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const pageId = item.getAttribute('data-page');
+                showPage(pageId, item);
+            }
+        });
+    });
+}
+
+function setupKeyboardNavigation() {
+    document.addEventListener('keydown', (e) => {
+        // Alt + number keys for quick navigation
+        if (e.altKey && e.key >= '1' && e.key <= '6') {
+            e.preventDefault();
+            const pageIndex = parseInt(e.key) - 1;
+            const navItems = document.querySelectorAll('.nav-item[data-page]');
+            if (navItems[pageIndex]) {
+                const pageId = navItems[pageIndex].getAttribute('data-page');
+                showPage(pageId, navItems[pageIndex]);
+                navItems[pageIndex].focus();
+            }
+        }
+    });
+}

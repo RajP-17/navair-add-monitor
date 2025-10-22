@@ -1,0 +1,130 @@
+[DEBUG] Watching for changes in setting files /home/navair/.claude/settings.json...
+[DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+[DEBUG] >>>>> getSkillsIfEnabled() CALLED <<<<<
+[DEBUG] ENABLE_SKILLS value: true, type: boolean
+[DEBUG] ENABLE_SKILLS check passed, loading skills...
+[DEBUG] Loading skills from directories: managed=/etc/claude-code/.claude/skills, user=/home/navair/.claude/skills, project=/home/navair/Desktop/navair-app/.claude/skills
+[DEBUG] >>>>> getPluginSkills CALLED <<<<<
+[DEBUG] getPluginSkills: Processing 0 enabled plugins
+[DEBUG] Total plugin skills loaded: 0
+[DEBUG] Total plugin commands loaded: 0
+[DEBUG] Registered 0 hooks from 0 plugins
+[DEBUG] Loaded 0 skills total (managed: 0, user: 0, project: 0)
+[DEBUG] getSkillsIfEnabled returning: 0 skill dir commands, 0 plugin skills
+[DEBUG] Summarizing all 2 messages (~544 tokens)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160269107
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 58184 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160269107 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160269148
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 58184 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160269148 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Creating shell snapshot for bash (/bin/bash)
+[DEBUG] Looking for shell config file: /home/navair/.bashrc
+[DEBUG] Snapshots directory: /home/navair/.claude/shell-snapshots
+[DEBUG] Creating snapshot at: /home/navair/.claude/shell-snapshots/snapshot-bash-1761160269315-ua032e.sh
+[DEBUG] Shell binary exists: true
+[DEBUG] Execution timeout: 10000ms
+[DEBUG] Writing to temp file: /home/navair/.claude/todos/b8ac8dfe-3bdf-47f1-af00-349d80f4bd11-agent-b8ac8dfe-3bdf-47f1-af00-349d80f4bd11.json.tmp.4936.1761160269331
+[DEBUG] Temp file written successfully, size: 2 bytes
+[DEBUG] Renaming /home/navair/.claude/todos/b8ac8dfe-3bdf-47f1-af00-349d80f4bd11-agent-b8ac8dfe-3bdf-47f1-af00-349d80f4bd11.json.tmp.4936.1761160269331 to /home/navair/.claude/todos/b8ac8dfe-3bdf-47f1-af00-349d80f4bd11-agent-b8ac8dfe-3bdf-47f1-af00-349d80f4bd11.json
+[DEBUG] File /home/navair/.claude/todos/b8ac8dfe-3bdf-47f1-af00-349d80f4bd11-agent-b8ac8dfe-3bdf-47f1-af00-349d80f4bd11.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160269437
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57761 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160269437 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Total plugin agents loaded: 0
+[DEBUG] Shell snapshot created successfully (1914 bytes)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160270267
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57761 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160270267 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Stream started - received first chunk
+[DEBUG] Summarizing last 1 of 310 messages (~80516 tokens)
+[DEBUG] Stream started - received first chunk
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160271007
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57761 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160271007 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Getting matching hook commands for SessionStart with query: startup
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "startup" (0 before deduplication)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160271439
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57761 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160271439 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160271539
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57656 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160271539 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160271560
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57656 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160271560 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] AutoUpdaterWrapper: Installation type: native, using native: true
+[DEBUG] performStartupChecks called
+[DEBUG] Starting background plugin installations
+[DEBUG] performBackgroundPluginInstallations called
+[DEBUG] Setting installation status: 0 marketplaces, 0 installable plugins, 0 uninstallable plugins
+[DEBUG] Loaded plugins - Enabled: 0, Disabled: 0, Commands: 0, Agents: 0, Errors: 0
+[DEBUG] Stream started - received first chunk
+[DEBUG] Summarizing last 8 of 357 messages (~93156 tokens)
+[DEBUG] Getting matching hook commands for SubagentStop with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] MCP server "ide": Starting connection with timeout of 30000ms
+[DEBUG] rg error (signal=undefined, code=ABORT_ERR, stderr: ), 0 results
+[ERROR] AbortError: AbortError: The operation was aborted.
+    at unknown
+    at abortChildProcess (node:child_process:937:42)
+    at onAbortListener2 (node:child_process:35:24)
+    at abort (unknown)
+[DEBUG] Skills and commands included in Skill tool:
+[DEBUG] Slash commands included in SlashCommand tool:
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Stream started - received first chunk
+[DEBUG] Ripgrep first use test: PASSED (mode=builtin, path=/home/navair/.local/share/claude/versions/2.0.25)
+[DEBUG] AutoUpdaterWrapper: Installation type: native, using native: true
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] MCP server "ide": Successfully connected to ws-ide server in 8523ms
+[DEBUG] MCP server "ide": Connection established with capabilities: {"hasTools":true,"hasPrompts":false,"hasResources":false,"serverVersion":{"name":"Claude Code VSCode MCP","version":"2.0.25"}}
+[DEBUG] MCP server "ide": WS-IDE connection closed after 0s (cleanly)
+[ERROR] MCP server "ide" Failed to fetch tools: MCP error -32000: Connection closed
+[DEBUG] Getting matching hook commands for SessionStart with query: resume
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "resume" (0 before deduplication)
+[DEBUG] FileHistory: Copied backup 0ba344720df8f8e3@v2 from session 0e26bb04-a3b6-42d5-ab2c-6cab5520a885 to b8ac8dfe-3bdf-47f1-af00-349d80f4bd11
+[DEBUG] FileHistory: Copied backup 627bb5396d6fd297@v2 from session 0e26bb04-a3b6-42d5-ab2c-6cab5520a885 to b8ac8dfe-3bdf-47f1-af00-349d80f4bd11
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160289362
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57260 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160289362 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4936.1761160289389
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57260 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4936.1761160289389 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically

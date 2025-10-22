@@ -1,0 +1,946 @@
+[DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+[DEBUG] >>>>> getSkillsIfEnabled() CALLED <<<<<
+[DEBUG] ENABLE_SKILLS value: true, type: boolean
+[DEBUG] ENABLE_SKILLS check passed, loading skills...
+[DEBUG] Loading skills from directories: managed=/etc/claude-code/.claude/skills, user=/home/navair/.claude/skills, project=/home/navair/Desktop/navair-app/.claude/skills
+[DEBUG] >>>>> getPluginSkills CALLED <<<<<
+[DEBUG] getPluginSkills: Processing 0 enabled plugins
+[DEBUG] Total plugin skills loaded: 0
+[DEBUG] Total plugin commands loaded: 0
+[DEBUG] Registered 0 hooks from 0 plugins
+[DEBUG] Loaded 0 skills total (managed: 0, user: 0, project: 0)
+[DEBUG] getSkillsIfEnabled returning: 0 skill dir commands, 0 plugin skills
+[DEBUG] Summarizing all 2 messages (~589 tokens)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670341784
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 33811 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670341784 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670341799
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 33811 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670341799 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Creating shell snapshot for bash (/bin/bash)
+[DEBUG] Looking for shell config file: /home/navair/.bashrc
+[DEBUG] Snapshots directory: /home/navair/.claude/shell-snapshots
+[DEBUG] Creating snapshot at: /home/navair/.claude/shell-snapshots/snapshot-bash-1760670341816-d44t56.sh
+[DEBUG] Shell binary exists: true
+[DEBUG] Execution timeout: 10000ms
+[DEBUG] Writing to temp file: /home/navair/.claude/todos/840216ff-35d3-476e-9ead-f58ae6a24916-agent-840216ff-35d3-476e-9ead-f58ae6a24916.json.tmp.4804.1760670341821
+[DEBUG] Temp file written successfully, size: 2 bytes
+[DEBUG] Renaming /home/navair/.claude/todos/840216ff-35d3-476e-9ead-f58ae6a24916-agent-840216ff-35d3-476e-9ead-f58ae6a24916.json.tmp.4804.1760670341821 to /home/navair/.claude/todos/840216ff-35d3-476e-9ead-f58ae6a24916-agent-840216ff-35d3-476e-9ead-f58ae6a24916.json
+[DEBUG] File /home/navair/.claude/todos/840216ff-35d3-476e-9ead-f58ae6a24916-agent-840216ff-35d3-476e-9ead-f58ae6a24916.json written atomically
+[DEBUG] Total plugin agents loaded: 0
+[DEBUG] Shell snapshot created successfully (1800 bytes)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670341951
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 33811 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670341951 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] rg error (signal=null, code=2, stderr: rg: Resource temporarily unavailable (os error 11)
+), 804 results
+[DEBUG] Ripgrep first use test: PASSED (mode=builtin, path=/home/navair/.local/share/claude/versions/2.0.21)
+[DEBUG] Summarizing last 1 of 90 messages (~76714 tokens)
+[DEBUG] Stream started - received first chunk
+[DEBUG] Summarizing all 2 messages (~555 tokens)
+[DEBUG] Getting matching hook commands for SubagentStop with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344007
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34267 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344007 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344036
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34267 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344036 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344051
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34305 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344051 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Getting matching hook commands for SessionStart with query: startup
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "startup" (0 before deduplication)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344173
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34410 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344173 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Skills and commands included in Skill tool:
+[DEBUG] Slash commands included in SlashCommand tool:
+[DEBUG] Summarizing last 4 of 133 messages (~89170 tokens)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344219
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34305 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344219 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344230
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34305 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344230 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344238
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34305 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344238 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] AutoUpdaterWrapper: Installation type: native, using native: true
+[DEBUG] performStartupChecks called, ENABLE_PLUGINS=true
+[DEBUG] Starting background plugin installations
+[DEBUG] performBackgroundPluginInstallations called
+[DEBUG] Setting installation status: 0 marketplaces, 0 installable plugins, 0 uninstallable plugins
+[DEBUG] Loaded plugins - Enabled: 0, Disabled: 0, Commands: 0, Agents: 0, Errors: 0
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1760670344381
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 34305 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1760670344381 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] MCP server "ide": Starting connection with timeout of 30000ms
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] MCP server "ide": Successfully connected to ws-ide server in 47ms
+[DEBUG] MCP server "ide": Connection established with capabilities: {"hasTools":true,"hasPrompts":false,"hasResources":false,"serverVersion":{"name":"Claude Code VSCode MCP","version":"2.0.21"}}
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Summarizing all 2 messages (~583 tokens)
+[DEBUG] Summarizing last 1 of 349 messages (~127087 tokens)
+[DEBUG] Summarizing all 2 messages (~544 tokens)
+[DEBUG] Summarizing last 1 of 355 messages (~0 tokens)
+[DEBUG] Summarizing last 9 of 189 messages (~96768 tokens)
+[DEBUG] Summarizing all 2 messages (~546 tokens)
+[DEBUG] Summarizing last 18 of 199 messages (~96768 tokens)
+[DEBUG] Summarizing all 2 messages (~572 tokens)
+[DEBUG] Summarizing all 2 messages (~530 tokens)
+[DEBUG] Summarizing all 2 messages (~615 tokens)
+[DEBUG] Summarizing all 2 messages (~551 tokens)
+[DEBUG] Summarizing all 2 messages (~561 tokens)
+[DEBUG] Summarizing all 2 messages (~0 tokens)
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.21
+[DEBUG] Version 2.0.21 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.21
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Downloading native installer version 2.0.22
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.22
+[DEBUG] Version 2.0.22 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.22
+[DEBUG] Checking for native installer update to version 2.0.23
+[DEBUG] Downloading native installer version 2.0.23
+[DEBUG] Successfully updated to version 2.0.23
+[DEBUG] Checking for native installer update to version 2.0.23
+[DEBUG] Version 2.0.23 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.23
+[DEBUG] Checking for native installer update to version 2.0.23
+[DEBUG] Version 2.0.23 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.23
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Downloading native installer version 2.0.24
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.24
+[DEBUG] Version 2.0.24 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.24
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Downloading native installer version 2.0.25
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Checking for native installer update to version 2.0.25
+[DEBUG] Version 2.0.25 already installed, updating symlink
+[DEBUG] Successfully updated to version 2.0.25
+[DEBUG] Getting matching hook commands for SessionEnd with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] Cleaned up session snapshot: /home/navair/.claude/shell-snapshots/snapshot-bash-1760670341816-d44t56.sh
+[ERROR] Failed to save config with lock: Error: Lock file is already being held
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4804.1761152890290
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 57726 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4804.1761152890290 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically

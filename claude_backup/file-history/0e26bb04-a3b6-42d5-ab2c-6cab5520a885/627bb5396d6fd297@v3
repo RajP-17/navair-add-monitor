@@ -1,0 +1,184 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.env.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+navair_additive/data/navair_additive.db
+navair_additive/data/*.db
+
+# Logs
+*.log
+logs/
+navair_additive/logs/*.log
+navair_additive/logs/**/*.log
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node modules (for dashboard dependencies if any)
+node_modules/
+package-lock.json
+
+# Data files
+*.csv
+*.json.bak
+*.pkl
+*.pickle
+/data/
+/navair_additive/data/sensor_data/
+/navair_additive/data/exports/
+/navair_additive/data/reports/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+temp/
+
+# Credentials & Secrets
+**/credentials.json
+**/secrets.json
+*.pem
+*.key
+*.crt
+
+# System files
+Thumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Test output
+.pytest_cache/
+test-results/
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# Documentation builds
+docs/_build/
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+.nfs-*
+*.swp
+*~
+.pyc 
+*.txt
+txt

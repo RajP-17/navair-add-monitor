@@ -1,0 +1,914 @@
+"""FastAPI server for NAVAIR_ADDITIVE system web interface."""
+
+import asyncio
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+
+try:
+    from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse, FileResponse
+    from fastapi.security import HTTPBasic, HTTPBasicCredentials
+    import uvicorn
+    HAS_FASTAPI = True
+except ImportError:
+    HAS_FASTAPI = False
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from config.settings import get_settings
+from ..data.database import DatabaseManager
+from ..sensors.base_sensor import BaseSensor
+from ..utils.performance_monitor import PerformanceMonitor
+from ..data.models import SensorType, MaterialType, PrintStatus
+from .printer_interface import UltimakerS5Interface, PrinterState
+
+logger = logging.getLogger(__name__)
+
+
+class WebSocketManager:
+    """Manages WebSocket connections for real-time updates."""
+    
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        """Accept WebSocket connection."""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        """Remove WebSocket connection."""
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+    
+    async def broadcast(self, message: dict):
+        """Broadcast message to all connected clients."""
+        if not self.active_connections:
+            return
+        
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.warning(f"Failed to send WebSocket message: {e}")
+                disconnected.append(connection)
+        
+        # Remove failed connections
+        for connection in disconnected:
+            self.disconnect(connection)
+
+
+class APIServer:
+    """FastAPI server for web dashboard and API access."""
+    
+    def __init__(
+        self,
+        sensors: Dict[str, BaseSensor],
+        db_manager: DatabaseManager,
+        performance_monitor: PerformanceMonitor
+    ):
+        """Initialize API server."""
+        if not HAS_FASTAPI:
+            raise ImportError("FastAPI required for API server")
+        
+        self.settings = get_settings()
+        self.sensors = sensors
+        self.db_manager = db_manager
+        self.performance_monitor = performance_monitor
+        self.report_directory = Path(self.settings.data_dir) / "reports"
+        self.report_directory.mkdir(parents=True, exist_ok=True)
+        self._reported_jobs: Dict[str, Path] = {}
+
+        # Printer interface
+        self.printer = UltimakerS5Interface(
+            printer_ip=self.settings.sensors.printer_api_url.replace("http://", "").replace("https://", ""),
+            timeout=self.settings.sensors.printer_api_timeout,
+            use_digest_auth=self.settings.sensors.printer_auth_digest
+        )
+
+        # WebSocket manager for real-time updates
+        self.websocket_manager = WebSocketManager()
+        
+        # Create FastAPI app
+        self.app = FastAPI(
+            title="NAVAIR_ADDITIVE API",
+            description="Machine Health Monitoring System API",
+            version="1.0.0",
+            docs_url="/api/docs",
+            redoc_url="/api/redoc"
+        )
+        
+        # Configure CORS for local network access
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.settings.security.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        
+        # Security
+        self.security = HTTPBasic()
+        
+        # Server state
+        self._server = None
+        self._server_task = None
+        self._broadcast_task = None
+        
+        # Setup routes
+        self._setup_routes()
+        
+        logger.info("API server initialized")
+    
+    def _setup_routes(self):
+        """Setup API routes."""
+        
+        # Authentication dependency
+        async def get_current_user(credentials: HTTPBasicCredentials = Depends(self.security)):
+            # Simple authentication - in production, use proper auth
+            if (credentials.username != self.settings.security.default_username or
+                credentials.password != self.settings.security.default_password):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid authentication credentials",
+                    headers={"WWW-Authenticate": "Basic"},
+                )
+            return credentials.username
+        
+        # Health check endpoint
+        @self.app.get("/api/health")
+        async def health_check():
+            """System health check."""
+            health_data = {
+                "status": "healthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "version": self.settings.app_version,
+                "uptime_seconds": 0  # TODO: Calculate actual uptime
+            }
+            
+            # Add system metrics if available
+            if self.performance_monitor:
+                current_metrics = self.performance_monitor.get_current_metrics()
+                if current_metrics:
+                    health_data["system_metrics"] = {
+                        "cpu_percent": current_metrics.cpu_percent,
+                        "memory_percent": current_metrics.memory_percent,
+                        "disk_usage_percent": current_metrics.disk_usage_percent,
+                        "temperature": current_metrics.temperature
+                    }
+            
+            return health_data
+        
+        # Current sensor readings
+        @self.app.get("/api/sensors/current")
+        async def get_current_sensor_readings():
+            """Get current readings from all sensors."""
+            readings = {}
+            
+            for sensor_id, sensor in self.sensors.items():
+                try:
+                    if sensor.is_connected:
+                        reading = await sensor.read_single()
+                        if reading:
+                            readings[sensor_id] = {
+                                "sensor_type": reading.sensor_type.value,
+                                "value": reading.value,
+                                "unit": reading.unit,
+                                "quality_flag": reading.quality_flag.value,
+                                "timestamp": reading.timestamp.isoformat(),
+                                "metadata": reading.metadata
+                            }
+                    else:
+                        readings[sensor_id] = {
+                            "status": "disconnected",
+                            "sensor_type": sensor.sensor_type.value
+                        }
+                except Exception as e:
+                    readings[sensor_id] = {
+                        "status": "error",
+                        "error": str(e),
+                        "sensor_type": sensor.sensor_type.value
+                    }
+            
+            return {"readings": readings, "timestamp": datetime.utcnow().isoformat()}
+        
+        # Sensor history
+        @self.app.get("/api/sensors/{sensor_id}/history")
+        async def get_sensor_history(
+            sensor_id: str,
+            hours: int = 1,
+            limit: int = 1000
+        ):
+            """Get historical sensor data."""
+            if sensor_id not in self.sensors:
+                raise HTTPException(status_code=404, detail="Sensor not found")
+            
+            sensor = self.sensors[sensor_id]
+            start_time = datetime.utcnow() - timedelta(hours=hours)
+            
+            try:
+                readings = await self.db_manager.get_sensor_readings(
+                    sensor_type=sensor.sensor_type,
+                    sensor_id=sensor_id,
+                    start_time=start_time,
+                    limit=limit
+                )
+                
+                history = []
+                for reading in readings:
+                    history.append({
+                        "value": reading.value,
+                        "unit": reading.unit,
+                        "quality_flag": reading.quality_flag.value,
+                        "timestamp": reading.timestamp.isoformat(),
+                        "metadata": reading.metadata_dict
+                    })
+                
+                return {
+                    "sensor_id": sensor_id,
+                    "sensor_type": sensor.sensor_type.value,
+                    "history": history,
+                    "count": len(history)
+                }
+                
+            except Exception as e:
+                logger.error(f"Error getting sensor history: {e}")
+                raise HTTPException(status_code=500, detail="Failed to retrieve sensor history")
+        
+        # Sensor information and status
+        @self.app.get("/api/sensors/{sensor_id}/info")
+        async def get_sensor_info(sensor_id: str):
+            """Get detailed sensor information."""
+            if sensor_id not in self.sensors:
+                raise HTTPException(status_code=404, detail="Sensor not found")
+            
+            sensor = self.sensors[sensor_id]
+            
+            try:
+                info = await sensor.get_sensor_info()
+                return info
+            except Exception as e:
+                logger.error(f"Error getting sensor info: {e}")
+                raise HTTPException(status_code=500, detail="Failed to retrieve sensor info")
+        
+        # System status
+        @self.app.get("/api/system/status")
+        async def get_system_status():
+            """Get overall system status."""
+            status = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "sensors": {},
+                "database": {},
+                "performance": {},
+                "overall_health": "unknown"
+            }
+            
+            # Sensor status
+            connected_sensors = 0
+            total_sensors = len(self.sensors)
+            
+            for sensor_id, sensor in self.sensors.items():
+                sensor_health = sensor.health
+                status["sensors"][sensor_id] = {
+                    "connected": sensor.is_connected,
+                    "status": sensor.status.value,
+                    "health": {
+                        "status": sensor_health.status.value,
+                        "last_reading": sensor_health.last_reading.isoformat() if sensor_health.last_reading else None,
+                        "error_count": sensor_health.error_count,
+                        "reading_rate": sensor_health.reading_rate
+                    }
+                }
+                
+                if sensor.is_connected:
+                    connected_sensors += 1
+            
+            # Database health
+            if self.db_manager:
+                db_health = await self.db_manager.get_database_health()
+                status["database"] = db_health
+            
+            # Performance status
+            if self.performance_monitor:
+                perf_info = self.performance_monitor.get_system_info()
+                status["performance"] = perf_info
+            
+            # Overall health assessment
+            if connected_sensors == total_sensors and status["database"].get("connected", False):
+                status["overall_health"] = "healthy"
+            elif connected_sensors > total_sensors * 0.5:
+                status["overall_health"] = "degraded"
+            else:
+                status["overall_health"] = "unhealthy"
+            
+            return status
+        
+        # Print job endpoints
+        @self.app.get("/api/jobs/active")
+        async def get_active_jobs():
+            """Get currently active print jobs."""
+            try:
+                jobs = await self.db_manager.get_active_print_jobs()
+                return {
+                    "active_jobs": [
+                        {
+                            "uuid": job.uuid,
+                            "name": job.name,
+                            "status": job.status.value,
+                            "material_type": job.material_type.value,
+                            "start_time": job.start_time.isoformat() if job.start_time else None,
+                            "completion_percentage": job.completion_percentage
+                        }
+                        for job in jobs
+                    ],
+                    "count": len(jobs)
+                }
+            except Exception as e:
+                logger.error(f"Error getting active jobs: {e}")
+                raise HTTPException(status_code=500, detail="Failed to retrieve active jobs")
+        
+        @self.app.get("/api/jobs/{job_id}")
+        async def get_job_details(job_id: str):
+            """Get detailed information about a print job."""
+            try:
+                job = await self.db_manager.get_print_job(job_id)
+                if not job:
+                    raise HTTPException(status_code=404, detail="Print job not found")
+                
+                return {
+                    "uuid": job.uuid,
+                    "name": job.name,
+                    "status": job.status.value,
+                    "material_type": job.material_type.value,
+                    "quality_score": job.quality_score,
+                    "start_time": job.start_time.isoformat() if job.start_time else None,
+                    "end_time": job.end_time.isoformat() if job.end_time else None,
+                    "estimated_duration": job.estimated_duration,
+                    "actual_duration": job.actual_duration,
+                    "print_settings": {
+                        "layer_height": job.layer_height,
+                        "infill_percentage": job.infill_percentage,
+                        "print_temperature": job.print_temperature,
+                        "bed_temperature": job.bed_temperature,
+                        "print_speed": job.print_speed
+                    },
+                    "quality_metrics": {
+                        "defect_count": job.defect_count,
+                        "surface_quality": job.surface_quality,
+                        "dimensional_accuracy": job.dimensional_accuracy
+                    },
+                    "completion_percentage": job.completion_percentage,
+                    "notes": job.notes
+                }
+                
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error getting job details: {e}")
+                raise HTTPException(status_code=500, detail="Failed to retrieve job details")
+
+        @self.app.get("/api/jobs/{job_id}/report")
+        async def get_print_job_report(job_id: str, download: bool = False):
+            """Generate and return a comprehensive print job report."""
+            try:
+                report = await self.db_manager.generate_print_report(job_id)
+                if download:
+                    path = self._reported_jobs.get(job_id)
+                    if not path:
+                        path = await self.db_manager.save_print_report(
+                            report,
+                            self.report_directory
+                        )
+                        self._reported_jobs[job_id] = path
+                    return FileResponse(
+                        path,
+                        media_type="application/json",
+                        filename=path.name
+                    )
+                return report
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+            except Exception as exc:
+                logger.error(f"Error generating print report: {exc}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Failed to generate print report")
+
+        @self.app.get("/api/jobs/latest/report")
+        async def get_latest_print_job_report(download: bool = False):
+            """Return the most recently completed print job report."""
+            try:
+                job = await self.db_manager.get_latest_completed_print_job()
+                if not job:
+                    raise HTTPException(status_code=404, detail="No completed print jobs available")
+
+                report = await self.db_manager.generate_print_report(job.uuid)
+                if download:
+                    path = self._reported_jobs.get(job.uuid)
+                    if not path:
+                        path = await self.db_manager.save_print_report(
+                            report,
+                            self.report_directory
+                        )
+                        self._reported_jobs[job.uuid] = path
+                    return FileResponse(
+                        path,
+                        media_type="application/json",
+                        filename=path.name
+                    )
+                return report
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.error(f"Error generating latest print report: {exc}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Failed to generate latest print report")
+        
+        # Alert endpoints
+        @self.app.get("/api/alerts")
+        async def get_recent_alerts(
+            limit: int = 50,
+            severity: Optional[str] = None,
+            unresolved_only: bool = False
+        ):
+            """Get recent system alerts."""
+            try:
+                from ..data.models import AlertSeverity, EventType
+                
+                severity_filter = None
+                if severity:
+                    try:
+                        severity_filter = AlertSeverity(severity.lower())
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail="Invalid severity level")
+                
+                events = await self.db_manager.get_recent_events(
+                    severity=severity_filter,
+                    unresolved_only=unresolved_only,
+                    limit=limit
+                )
+                
+                alerts = []
+                for event in events:
+                    alerts.append({
+                        "id": event.id,
+                        "event_type": event.event_type.value,
+                        "severity": event.severity.value,
+                        "message": event.message,
+                        "component": event.component,
+                        "source_id": event.source_id,
+                        "timestamp": event.timestamp.isoformat(),
+                        "acknowledged": event.acknowledged,
+                        "resolved": event.resolved,
+                        "metadata": event.metadata_dict
+                    })
+                
+                return {
+                    "alerts": alerts,
+                    "count": len(alerts),
+                    "filters": {
+                        "severity": severity,
+                        "unresolved_only": unresolved_only,
+                        "limit": limit
+                    }
+                }
+                
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error getting alerts: {e}")
+                raise HTTPException(status_code=500, detail="Failed to retrieve alerts")
+        
+        # Control endpoints (require authentication)
+        @self.app.post("/api/sensors/{sensor_id}/calibrate")
+        async def calibrate_sensor(sensor_id: str, user: str = Depends(get_current_user)):
+            """Trigger sensor calibration."""
+            if sensor_id not in self.sensors:
+                raise HTTPException(status_code=404, detail="Sensor not found")
+            
+            sensor = self.sensors[sensor_id]
+            
+            try:
+                success = await sensor.calibrate()
+                return {
+                    "success": success,
+                    "message": f"Calibration {'completed' if success else 'failed'}",
+                    "sensor_id": sensor_id,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            except Exception as e:
+                logger.error(f"Error calibrating sensor: {e}")
+                raise HTTPException(status_code=500, detail="Calibration failed")
+        
+        @self.app.post("/api/alerts/{alert_id}/acknowledge")
+        async def acknowledge_alert(alert_id: int, user: str = Depends(get_current_user)):
+            """Acknowledge an alert."""
+            try:
+                await self.db_manager.acknowledge_event(alert_id, user)
+                return {
+                    "success": True,
+                    "message": "Alert acknowledged",
+                    "alert_id": alert_id,
+                    "acknowledged_by": user,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            except Exception as e:
+                logger.error(f"Error acknowledging alert: {e}")
+                raise HTTPException(status_code=500, detail="Failed to acknowledge alert")
+
+        # =====================================================================
+        # PRINTER CONTROL ENDPOINTS
+        # =====================================================================
+
+        @self.app.get("/api/print/status")
+        async def get_print_status():
+            """Get current print job status from printer."""
+            try:
+                if not self.printer.is_connected:
+                    await self.printer.connect()
+
+                status = await self.printer.get_printer_status()
+                if status:
+                    job_uuid = await self._sync_printer_job_status(status)
+                    if job_uuid:
+                        status["job_uuid"] = job_uuid
+                        report_path = self._reported_jobs.get(job_uuid)
+                        status["report_ready"] = report_path is not None
+                        if report_path:
+                            status["report_path"] = str(report_path)
+                    else:
+                        status["report_ready"] = False
+                    return status
+                else:
+                    raise HTTPException(status_code=503, detail="Printer not responding")
+
+            except Exception as e:
+                logger.error(f"Error getting print status: {e}")
+                return {
+                    "state": "offline",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+        @self.app.post("/api/controls/emergency_stop")
+        async def emergency_stop(user: str = Depends(get_current_user)):
+            """Emergency stop - immediately halt printer."""
+            try:
+                logger.critical(f"Emergency stop triggered by {user}")
+
+                if not self.printer.is_connected:
+                    await self.printer.connect()
+
+                success = await self.printer.emergency_stop()
+
+                # Log event to database
+                if self.db_manager:
+                    from ..data.models import EventType, AlertSeverity
+                    await self.db_manager.log_system_event(
+                        event_type=EventType.EMERGENCY_STOP,
+                        severity=AlertSeverity.CRITICAL,
+                        message=f"Emergency stop triggered by {user}",
+                        component="printer_control"
+                    )
+
+                return {
+                    "success": success,
+                    "message": "Emergency stop executed" if success else "Emergency stop failed",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+            except Exception as e:
+                logger.error(f"Emergency stop error: {e}")
+                raise HTTPException(status_code=500, detail=f"Emergency stop failed: {str(e)}")
+
+        @self.app.post("/api/controls/pause_resume")
+        async def pause_resume_print(user: str = Depends(get_current_user)):
+            """Pause or resume print job."""
+            try:
+                if not self.printer.is_connected:
+                    await self.printer.connect()
+
+                # Get current status
+                status = await self.printer.get_printer_status()
+
+                if not status:
+                    raise HTTPException(status_code=503, detail="Printer not responding")
+
+                # Toggle pause/resume based on current state
+                if status.get("state") == "printing":
+                    success = await self.printer.pause_print()
+                    action = "paused"
+                elif status.get("state") == "paused":
+                    success = await self.printer.resume_print()
+                    action = "resumed"
+                else:
+                    return {
+                        "success": False,
+                        "message": f"Cannot pause/resume in state: {status.get('state')}",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+
+                return {
+                    "success": success,
+                    "message": f"Print {action}" if success else f"Failed to {action} print",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+            except Exception as e:
+                logger.error(f"Pause/resume error: {e}")
+                raise HTTPException(status_code=500, detail=f"Pause/resume failed: {str(e)}")
+
+        @self.app.post("/api/controls/calibrate")
+        async def calibrate_all_sensors(user: str = Depends(get_current_user)):
+            """Calibrate all sensors."""
+            try:
+                logger.info(f"Sensor calibration triggered by {user}")
+                results = {}
+
+                for sensor_id, sensor in self.sensors.items():
+                    try:
+                        success = await sensor.calibrate()
+                        results[sensor_id] = {
+                            "success": success,
+                            "message": "Calibration completed" if success else "Calibration failed"
+                        }
+                    except Exception as e:
+                        results[sensor_id] = {
+                            "success": False,
+                            "error": str(e)
+                        }
+
+                return {
+                    "results": results,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+            except Exception as e:
+                logger.error(f"Calibration error: {e}")
+                raise HTTPException(status_code=500, detail=f"Calibration failed: {str(e)}")
+
+        @self.app.get("/api/data/export")
+        async def export_sensor_data(
+            hours: int = 24,
+            format: str = "json"
+        ):
+            """Export sensor data for download."""
+            try:
+                start_time = datetime.utcnow() - timedelta(hours=hours)
+
+                # Get all sensor data
+                export_data = {
+                    "export_time": datetime.utcnow().isoformat(),
+                    "time_range_hours": hours,
+                    "sensors": {}
+                }
+
+                for sensor_id, sensor in self.sensors.items():
+                    try:
+                        readings = await self.db_manager.get_sensor_readings(
+                            sensor_type=sensor.sensor_type,
+                            sensor_id=sensor_id,
+                            start_time=start_time,
+                            limit=10000
+                        )
+
+                        export_data["sensors"][sensor_id] = [
+                            {
+                                "timestamp": r.timestamp.isoformat(),
+                                "value": r.value,
+                                "unit": r.unit,
+                                "quality_flag": r.quality_flag.value
+                            }
+                            for r in readings
+                        ]
+                    except Exception as e:
+                        logger.error(f"Error exporting {sensor_id}: {e}")
+                        export_data["sensors"][sensor_id] = {"error": str(e)}
+
+                return export_data
+
+            except Exception as e:
+                logger.error(f"Export error: {e}")
+                raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+        @self.app.get("/api/system/health")
+        async def get_system_health():
+            """Get comprehensive system health information."""
+            try:
+                health = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "overall_status": "healthy",
+                    "components": {}
+                }
+
+                # Sensor health
+                sensor_health = {}
+                connected_count = 0
+                for sensor_id, sensor in self.sensors.items():
+                    sensor_health[sensor_id] = {
+                        "connected": sensor.is_connected,
+                        "status": sensor.status.value
+                    }
+                    if sensor.is_connected:
+                        connected_count += 1
+
+                health["components"]["sensors"] = {
+                    "status": "healthy" if connected_count == len(self.sensors) else "degraded",
+                    "connected": connected_count,
+                    "total": len(self.sensors),
+                    "details": sensor_health
+                }
+
+                # Printer health
+                if not self.printer.is_connected:
+                    await self.printer.connect()
+
+                printer_ok = await self.printer.health_check()
+                health["components"]["printer"] = {
+                    "status": "healthy" if printer_ok else "offline",
+                    "connected": printer_ok
+                }
+
+                # Database health
+                if self.db_manager:
+                    db_health = await self.db_manager.get_database_health()
+                    health["components"]["database"] = {
+                        "status": "healthy" if db_health.get("connected") else "error",
+                        "details": db_health
+                    }
+
+                # Performance metrics
+                if self.performance_monitor:
+                    perf = self.performance_monitor.get_current_metrics()
+                    if perf:
+                        health["components"]["performance"] = {
+                            "cpu_percent": perf.cpu_percent,
+                            "memory_percent": perf.memory_percent,
+                            "disk_usage_percent": perf.disk_usage_percent,
+                            "temperature": perf.temperature
+                        }
+
+                # Determine overall status
+                if not printer_ok or connected_count < len(self.sensors) * 0.5:
+                    health["overall_status"] = "degraded"
+
+                return health
+
+            except Exception as e:
+                logger.error(f"Health check error: {e}")
+                raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+        @self.app.get("/api/system/performance")
+        async def get_performance_metrics():
+            """Get current performance metrics."""
+            try:
+                if not self.performance_monitor:
+                    raise HTTPException(status_code=503, detail="Performance monitor not available")
+
+                metrics = self.performance_monitor.get_current_metrics()
+                if not metrics:
+                    raise HTTPException(status_code=503, detail="No performance data available")
+
+                return {
+                    "cpu_usage": metrics.cpu_percent,
+                    "cpu_percent": metrics.cpu_percent,
+                    "memory_usage": metrics.memory_percent,
+                    "memory_percent": metrics.memory_percent,
+                    "memory_used_mb": metrics.memory_mb,
+                    "disk_usage_percent": metrics.disk_usage_percent,
+                    "temperature": metrics.temperature,
+                    "timestamp": metrics.timestamp.isoformat()
+                }
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Performance metrics error: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to get performance metrics: {str(e)}")
+
+        # WebSocket endpoint for real-time updates
+        @self.app.websocket("/api/ws")
+        async def websocket_endpoint(websocket: WebSocket):
+            """WebSocket endpoint for real-time data."""
+            await self.websocket_manager.connect(websocket)
+            
+            try:
+                while True:
+                    # Keep connection alive
+                    await websocket.receive_text()
+                    
+            except WebSocketDisconnect:
+                self.websocket_manager.disconnect(websocket)
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                self.websocket_manager.disconnect(websocket)
+    
+    async def start(self) -> None:
+        """Start the API server."""
+        try:
+            # Connect to printer
+            logger.info("Connecting to Ultimaker S5 printer...")
+            printer_connected = await self.printer.connect()
+            if printer_connected:
+                logger.info("Printer connected successfully")
+            else:
+                logger.warning("Failed to connect to printer - will retry on API requests")
+
+            config = uvicorn.Config(
+                self.app,
+                host=self.settings.network.api_host,
+                port=self.settings.network.api_port,
+                log_level="info",
+                access_log=True
+            )
+
+            self._server = uvicorn.Server(config)
+            self._server_task = asyncio.create_task(self._server.serve())
+
+            # Start real-time broadcast task
+            self._broadcast_task = asyncio.create_task(self._broadcast_loop())
+
+            logger.info(f"API server started on {self.settings.network.api_host}:{self.settings.network.api_port}")
+
+        except Exception as e:
+            logger.error(f"Failed to start API server: {e}")
+            raise
+    
+    async def stop(self) -> None:
+        """Stop the API server."""
+        logger.info("Stopping API server...")
+
+        # Disconnect printer
+        if self.printer:
+            await self.printer.disconnect()
+
+        # Stop broadcast task
+        if self._broadcast_task:
+            self._broadcast_task.cancel()
+            try:
+                await self._broadcast_task
+            except asyncio.CancelledError:
+                pass
+
+        # Stop server
+        if self._server:
+            self._server.should_exit = True
+        
+        if self._server_task:
+            try:
+                await asyncio.wait_for(self._server_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("API server shutdown timeout")
+                self._server_task.cancel()
+        
+        logger.info("API server stopped")
+    
+    async def _broadcast_loop(self) -> None:
+        """Background task for broadcasting real-time updates."""
+        while True:
+            try:
+                # Collect current data
+                current_data = {
+                    "type": "sensor_update",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "sensors": {}
+                }
+                
+                # Get sensor readings
+                for sensor_id, sensor in self.sensors.items():
+                    if sensor.is_connected:
+                        try:
+                            reading = await sensor.read_single()
+                            if reading:
+                                current_data["sensors"][sensor_id] = {
+                                    "value": reading.value,
+                                    "quality_flag": reading.quality_flag.value,
+                                    "timestamp": reading.timestamp.isoformat()
+                                }
+                        except Exception as e:
+                            logger.debug(f"Error reading sensor {sensor_id} for broadcast: {e}")
+                
+                # Broadcast to connected clients
+                if current_data["sensors"]:  # Only broadcast if we have data
+                    await self.websocket_manager.broadcast(current_data)
+                
+                # Wait before next update (1-second updates)
+                await asyncio.sleep(1.0)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in broadcast loop: {e}")
+                await asyncio.sleep(5.0)  # Back off on error
+    
+    def is_running(self) -> bool:
+        """Check if the API server is running."""
+        return (
+            self._server_task is not None and 
+            not self._server_task.done() and
+            self._server is not None
+        )

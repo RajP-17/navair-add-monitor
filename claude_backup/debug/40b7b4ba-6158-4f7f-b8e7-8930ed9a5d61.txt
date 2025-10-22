@@ -1,0 +1,49 @@
+[DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+[DEBUG] >>>>> getSkillsIfEnabled() CALLED <<<<<
+[DEBUG] ENABLE_SKILLS value: true, type: boolean
+[DEBUG] ENABLE_SKILLS check passed, loading skills...
+[DEBUG] Loading skills from directories: managed=/etc/claude-code/.claude/skills, user=/home/navair/.claude/skills, project=/home/navair/Desktop/navair-app/.claude/skills
+[DEBUG] >>>>> getPluginSkills CALLED <<<<<
+[DEBUG] getPluginSkills: Processing 0 enabled plugins
+[DEBUG] Total plugin skills loaded: 0
+[DEBUG] Total plugin commands loaded: 0
+[DEBUG] Registered 0 hooks from 0 plugins
+[DEBUG] Loaded 0 skills total (managed: 0, user: 0, project: 0)
+[DEBUG] getSkillsIfEnabled returning: 0 skill dir commands, 0 plugin skills
+[DEBUG] Creating shell snapshot for bash (/bin/bash)
+[DEBUG] Looking for shell config file: /home/navair/.bashrc
+[DEBUG] Snapshots directory: /home/navair/.claude/shell-snapshots
+[DEBUG] Creating snapshot at: /home/navair/.claude/shell-snapshots/snapshot-bash-1760670189537-y93m7t.sh
+[DEBUG] Shell binary exists: true
+[DEBUG] Execution timeout: 10000ms
+[DEBUG] Writing to temp file: /home/navair/.claude/todos/40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61-agent-40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61.json.tmp.4473.1760670189546
+[DEBUG] Temp file written successfully, size: 2 bytes
+[DEBUG] Renaming /home/navair/.claude/todos/40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61-agent-40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61.json.tmp.4473.1760670189546 to /home/navair/.claude/todos/40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61-agent-40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61.json
+[DEBUG] File /home/navair/.claude/todos/40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61-agent-40b7b4ba-6158-4f7f-b8e7-8930ed9a5d61.json written atomically
+[DEBUG] Total plugin agents loaded: 0
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4473.1760670189670
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 33811 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4473.1760670189670 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4473.1760670189691
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 33811 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4473.1760670189691 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Shell snapshot created successfully (1776 bytes)
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.4473.1760670189878
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 33811 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.4473.1760670189878 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Getting matching hook commands for SessionStart with query: startup
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "startup" (0 before deduplication)
+[DEBUG] Getting matching hook commands for SessionEnd with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] Cleaned up session snapshot: /home/navair/.claude/shell-snapshots/snapshot-bash-1760670189537-y93m7t.sh

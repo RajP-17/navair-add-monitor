@@ -1,0 +1,556 @@
+"""Data validation utilities for NAVAIR_ADDITIVE system."""
+
+import logging
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Union
+from pydantic import BaseModel, Field, validator
+from enum import Enum
+
+from .models import SensorType, QualityFlag, MaterialType, PrintStatus
+
+logger = logging.getLogger(__name__)
+
+
+class ValidationResult(BaseModel):
+    """Result of data validation."""
+    is_valid: bool
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    quality_score: float = Field(ge=0, le=1)
+    recommended_action: str = "none"
+
+
+class SensorReading(BaseModel):
+    """Pydantic model for sensor reading validation."""
+    sensor_type: SensorType
+    sensor_id: Optional[str] = None
+    value: Union[float, Dict[str, float]]  # Allow both single values and multi-value dicts
+    unit: Optional[str] = None
+    quality_flag: QualityFlag = QualityFlag.GOOD
+    timestamp: datetime
+    print_job_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    @validator('value')
+    def validate_value(cls, v, values):
+        """Validate sensor value based on type."""
+        sensor_type = values.get('sensor_type')
+
+        if sensor_type == SensorType.BME280:
+            # BME280 can return dict with temp, humidity, pressure
+            if isinstance(v, dict):
+                # Validate each value in the dict
+                temp = v.get('temperature')
+                humidity = v.get('humidity')
+                pressure = v.get('pressure')
+
+                if temp is not None and not (-40 <= temp <= 85):
+                    raise ValueError(f"BME280 temperature {temp} outside valid range (-40 to 85)")
+                if humidity is not None and not (0 <= humidity <= 100):
+                    raise ValueError(f"BME280 humidity {humidity} outside valid range (0 to 100)")
+                if pressure is not None and not (300 <= pressure <= 1100):
+                    raise ValueError(f"BME280 pressure {pressure} outside valid range (300 to 1100)")
+                return v
+            # Single value (temperature) - only validate if it's a number
+            elif isinstance(v, (int, float)):
+                if not (-40 <= v <= 85):  # Temperature range
+                    raise ValueError(f"BME280 value {v} outside valid range (-40 to 85)")
+                return v
+            else:
+                raise ValueError(f"BME280 value must be float or dict, got {type(v)}")
+        
+        elif sensor_type in [SensorType.MPU6050_BED, SensorType.MPU6050_BODY]:
+            # Acceleration range (±16g)
+            if not (-160 <= v <= 160):  # m/s²
+                raise ValueError(f"MPU6050 value {v} outside valid range (-160 to 160 m/s²)")
+        
+        elif sensor_type in [SensorType.LASER_X, SensorType.LASER_Y]:
+            # Digital or ADC values
+            if not (0 <= v <= 1024):
+                raise ValueError(f"Laser sensor value {v} outside valid range (0 to 1024)")
+        
+        elif sensor_type == SensorType.PRINTER_TEMP:
+            # Printer temperature range
+            if not (0 <= v <= 500):
+                raise ValueError(f"Printer temperature {v} outside valid range (0 to 500°C)")
+        
+        elif sensor_type == SensorType.PRINTER_POSITION:
+            # Printer position range (assuming 300mm build volume)
+            if not (-50 <= v <= 350):
+                raise ValueError(f"Printer position {v} outside valid range (-50 to 350mm)")
+        
+        elif sensor_type == SensorType.PRINTER_FLOW:
+            # Flow rate percentage
+            if not (0 <= v <= 200):
+                raise ValueError(f"Printer flow rate {v} outside valid range (0 to 200%)")
+        
+        return v
+    
+    @validator('timestamp')
+    def validate_timestamp(cls, v):
+        """Validate timestamp is reasonable."""
+        now = datetime.utcnow()
+        one_year_ago = now - timedelta(days=365)
+        one_hour_future = now + timedelta(hours=1)
+        
+        if not (one_year_ago <= v <= one_hour_future):
+            raise ValueError(f"Timestamp {v} outside reasonable range")
+        
+        return v
+
+
+class PrintJobValidator(BaseModel):
+    """Pydantic model for print job validation."""
+    name: str = Field(min_length=1, max_length=255)
+    status: PrintStatus
+    material_type: MaterialType
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    estimated_duration: Optional[int] = Field(ge=0, le=86400*7)  # Max 7 days
+    print_temperature: Optional[float] = Field(ge=0, le=500)
+    bed_temperature: Optional[float] = Field(ge=0, le=150)
+    layer_height: Optional[float] = Field(ge=0.05, le=1.0)  # 0.05-1.0mm
+    infill_percentage: Optional[float] = Field(ge=0, le=100)
+    print_speed: Optional[float] = Field(ge=1, le=500)  # 1-500 mm/s
+    
+    @validator('end_time')
+    def validate_end_time(cls, v, values):
+        """Validate end time is after start time."""
+        start_time = values.get('start_time')
+        if start_time and v and v <= start_time:
+            raise ValueError("End time must be after start time")
+        return v
+    
+    @validator('print_temperature')
+    def validate_print_temp(cls, v, values):
+        """Validate print temperature for material."""
+        material = values.get('material_type')
+        
+        if v is not None and material:
+            temp_ranges = {
+                MaterialType.ABS: (220, 260),
+                MaterialType.PETG: (220, 250),
+                MaterialType.NYLON: (240, 280),
+                MaterialType.PLA: (190, 220)
+            }
+            
+            if material in temp_ranges:
+                min_temp, max_temp = temp_ranges[material]
+                if not (min_temp <= v <= max_temp):
+                    logger.warning(
+                        f"Print temperature {v}°C outside typical range "
+                        f"for {material.value}: {min_temp}-{max_temp}°C"
+                    )
+        
+        return v
+
+
+class DataValidator:
+    """Main data validation class."""
+    
+    def __init__(self):
+        self.validation_rules = self._initialize_validation_rules()
+        self.quality_thresholds = self._initialize_quality_thresholds()
+    
+    def _initialize_validation_rules(self) -> Dict[str, Dict]:
+        """Initialize validation rules for each sensor type."""
+        return {
+            SensorType.BME280.value: {
+                'min_frequency': 0.016,  # 1 per minute
+                'max_frequency': 1.0,    # 1 per second
+                'value_range': (-40, 85),
+                'max_change_rate': 10.0,  # °C per minute
+                'outlier_threshold': 3.0  # Standard deviations
+            },
+            SensorType.MPU6050_BED.value: {
+                'min_frequency': 10.0,   # 10 Hz minimum
+                'max_frequency': 100.0,  # 100 Hz maximum
+                'value_range': (-160, 160),  # m/s²
+                'max_change_rate': 500.0,    # m/s² per second
+                'outlier_threshold': 4.0
+            },
+            SensorType.MPU6050_BODY.value: {
+                'min_frequency': 10.0,
+                'max_frequency': 100.0,
+                'value_range': (-160, 160),
+                'max_change_rate': 500.0,
+                'outlier_threshold': 4.0
+            },
+            SensorType.LASER_X.value: {
+                'min_frequency': 40.0,   # 40 Hz minimum
+                'max_frequency': 60.0,   # 60 Hz maximum
+                'value_range': (0, 1024),
+                'max_change_rate': 100.0,
+                'outlier_threshold': 2.0
+            },
+            SensorType.LASER_Y.value: {
+                'min_frequency': 40.0,
+                'max_frequency': 60.0,
+                'value_range': (0, 1024),
+                'max_change_rate': 100.0,
+                'outlier_threshold': 2.0
+            },
+            SensorType.PRINTER_TEMP.value: {
+                'min_frequency': 1.0,    # 1 Hz minimum
+                'max_frequency': 10.0,   # 10 Hz maximum
+                'value_range': (0, 500),
+                'max_change_rate': 50.0,  # °C per minute
+                'outlier_threshold': 3.0
+            },
+            SensorType.PRINTER_POSITION.value: {
+                'min_frequency': 1.0,
+                'max_frequency': 20.0,
+                'value_range': (-50, 350),
+                'max_change_rate': 300.0,  # mm per second
+                'outlier_threshold': 3.0
+            },
+            SensorType.PRINTER_FLOW.value: {
+                'min_frequency': 1.0,
+                'max_frequency': 10.0,
+                'value_range': (0, 200),
+                'max_change_rate': 100.0,  # % per minute
+                'outlier_threshold': 3.0
+            }
+        }
+    
+    def _initialize_quality_thresholds(self) -> Dict[str, float]:
+        """Initialize quality score thresholds."""
+        return {
+            'excellent': 0.95,
+            'good': 0.8,
+            'acceptable': 0.6,
+            'poor': 0.4,
+            'unacceptable': 0.2
+        }
+    
+    def validate_sensor_reading(
+        self, 
+        reading_data: Dict[str, Any]
+    ) -> ValidationResult:
+        """Validate a single sensor reading."""
+        errors = []
+        warnings = []
+        quality_score = 1.0
+        
+        try:
+            # Validate with Pydantic model
+            reading = SensorReading(**reading_data)
+            
+            # Additional validation checks
+            sensor_type = reading.sensor_type.value
+            rules = self.validation_rules.get(sensor_type, {})
+            
+            # Check value range (skip for dict/list values)
+            value_range = rules.get('value_range')
+            if value_range and isinstance(reading.value, (int, float)):
+                if not (value_range[0] <= reading.value <= value_range[1]):
+                    errors.append(f"Value {reading.value} outside valid range {value_range}")
+                    quality_score *= 0.5
+            
+            # Check timestamp freshness
+            age = (datetime.utcnow() - reading.timestamp).total_seconds()
+            if age > 3600:  # 1 hour
+                warnings.append(f"Data is {age/3600:.1f} hours old")
+                quality_score *= 0.9
+            
+            # Check quality flag
+            if reading.quality_flag in [QualityFlag.WARNING, QualityFlag.POOR]:
+                warnings.append(f"Quality flag is {reading.quality_flag.value}")
+                quality_score *= 0.7
+            elif reading.quality_flag == QualityFlag.INVALID:
+                errors.append("Quality flag indicates invalid data")
+                quality_score = 0.0
+            
+        except ValueError as e:
+            errors.append(f"Validation error: {str(e)}")
+            quality_score = 0.0
+        except Exception as e:
+            errors.append(f"Unexpected validation error: {str(e)}")
+            quality_score = 0.0
+        
+        # Determine recommended action
+        recommended_action = self._determine_recommended_action(
+            quality_score, errors, warnings
+        )
+        
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            quality_score=quality_score,
+            recommended_action=recommended_action
+        )
+    
+    def validate_sensor_data_stream(
+        self, 
+        data: pd.DataFrame,
+        sensor_type: SensorType
+    ) -> ValidationResult:
+        """Validate a stream of sensor data."""
+        errors = []
+        warnings = []
+        quality_score = 1.0
+        
+        if data.empty:
+            errors.append("No data provided")
+            return ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=warnings,
+                quality_score=0.0,
+                recommended_action="collect_data"
+            )
+        
+        rules = self.validation_rules.get(sensor_type.value, {})
+        
+        # Check sampling frequency
+        if 'timestamp' in data.columns and len(data) > 1:
+            data_sorted = data.sort_values('timestamp')
+            time_diffs = data_sorted['timestamp'].diff().dt.total_seconds().dropna()
+            
+            if len(time_diffs) > 0:
+                avg_interval = time_diffs.mean()
+                freq = 1.0 / avg_interval if avg_interval > 0 else 0
+                
+                min_freq = rules.get('min_frequency', 0)
+                max_freq = rules.get('max_frequency', float('inf'))
+                
+                if freq < min_freq:
+                    warnings.append(f"Sampling frequency {freq:.2f}Hz below minimum {min_freq}Hz")
+                    quality_score *= 0.8
+                
+                if freq > max_freq:
+                    warnings.append(f"Sampling frequency {freq:.2f}Hz above maximum {max_freq}Hz")
+                    quality_score *= 0.9
+        
+        # Check data gaps
+        gaps = self._detect_data_gaps(data)
+        if gaps:
+            warnings.extend([f"Data gap detected: {gap}" for gap in gaps[:3]])
+            quality_score *= (0.9 ** len(gaps))
+        
+        # Check for outliers
+        if 'value' in data.columns:
+            outlier_ratio = self._detect_outliers(
+                data['value'].values, 
+                threshold=rules.get('outlier_threshold', 3.0)
+            )
+            
+            if outlier_ratio > 0.1:  # More than 10% outliers
+                warnings.append(f"High outlier ratio: {outlier_ratio:.1%}")
+                quality_score *= 0.8
+            elif outlier_ratio > 0.05:  # More than 5% outliers
+                warnings.append(f"Moderate outlier ratio: {outlier_ratio:.1%}")
+                quality_score *= 0.9
+        
+        # Check for sensor drift
+        drift_score = self._detect_sensor_drift(data)
+        if drift_score > 0.8:
+            warnings.append(f"Potential sensor drift detected (score: {drift_score:.2f})")
+            quality_score *= 0.85
+        
+        # Check data completeness
+        completeness = self._calculate_data_completeness(data)
+        if completeness < 0.95:
+            warnings.append(f"Data completeness: {completeness:.1%}")
+            quality_score *= completeness
+        
+        # Check for anomalous patterns
+        anomaly_score = self._detect_anomalous_patterns(data, sensor_type)
+        if anomaly_score > 0.7:
+            warnings.append(f"Anomalous patterns detected (score: {anomaly_score:.2f})")
+            quality_score *= 0.9
+        
+        recommended_action = self._determine_recommended_action(
+            quality_score, errors, warnings
+        )
+        
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            quality_score=quality_score,
+            recommended_action=recommended_action
+        )
+    
+    def validate_print_job(self, job_data: Dict[str, Any]) -> ValidationResult:
+        """Validate print job data."""
+        errors = []
+        warnings = []
+        quality_score = 1.0
+        
+        try:
+            job = PrintJobValidator(**job_data)
+            
+            # Additional business logic validation
+            if job.status == PrintStatus.COMPLETED and not job.end_time:
+                warnings.append("Completed job missing end time")
+                quality_score *= 0.9
+            
+            if job.estimated_duration and job.start_time and job.end_time:
+                actual_duration = (job.end_time - job.start_time).total_seconds()
+                duration_diff = abs(actual_duration - job.estimated_duration) / job.estimated_duration
+                
+                if duration_diff > 0.5:  # More than 50% difference
+                    warnings.append(f"Large duration variance: {duration_diff:.1%}")
+                    quality_score *= 0.9
+            
+        except ValueError as e:
+            errors.append(f"Print job validation error: {str(e)}")
+            quality_score = 0.0
+        
+        recommended_action = self._determine_recommended_action(
+            quality_score, errors, warnings
+        )
+        
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            quality_score=quality_score,
+            recommended_action=recommended_action
+        )
+    
+    def _detect_data_gaps(
+        self, 
+        data: pd.DataFrame, 
+        max_gap_seconds: float = 300
+    ) -> List[str]:
+        """Detect gaps in time series data."""
+        gaps = []
+        
+        if 'timestamp' not in data.columns or len(data) < 2:
+            return gaps
+        
+        data_sorted = data.sort_values('timestamp')
+        time_diffs = data_sorted['timestamp'].diff().dt.total_seconds().dropna()
+        
+        gap_mask = time_diffs > max_gap_seconds
+        gap_indices = time_diffs[gap_mask].index
+        
+        for idx in gap_indices[:5]:  # Limit to first 5 gaps
+            gap_duration = time_diffs.loc[idx]
+            gap_start = data_sorted.loc[idx-1, 'timestamp']
+            gaps.append(f"{gap_duration:.0f}s gap starting at {gap_start}")
+        
+        return gaps
+    
+    def _detect_outliers(self, values: np.ndarray, threshold: float = 3.0) -> float:
+        """Detect outliers using modified Z-score."""
+        if len(values) < 3:
+            return 0.0
+        
+        median = np.median(values)
+        mad = np.median(np.abs(values - median))
+        
+        if mad == 0:
+            return 0.0
+        
+        modified_z_scores = 0.6745 * (values - median) / mad
+        outlier_count = np.sum(np.abs(modified_z_scores) > threshold)
+        
+        return outlier_count / len(values)
+    
+    def _detect_sensor_drift(self, data: pd.DataFrame) -> float:
+        """Detect sensor drift using linear trend analysis."""
+        if 'value' not in data.columns or len(data) < 10:
+            return 0.0
+        
+        values = data['value'].values
+        x = np.arange(len(values))
+        
+        # Calculate linear trend
+        try:
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x, values)
+            
+            # Normalize slope by value range
+            value_range = np.ptp(values)
+            if value_range > 0:
+                normalized_slope = abs(slope) / value_range
+                return min(1.0, normalized_slope * len(values))
+            
+        except Exception:
+            pass
+        
+        return 0.0
+    
+    def _calculate_data_completeness(self, data: pd.DataFrame) -> float:
+        """Calculate data completeness score."""
+        if data.empty:
+            return 0.0
+        
+        required_columns = ['timestamp', 'value']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        
+        if missing_columns:
+            return 0.0
+        
+        # Calculate missing value ratio
+        total_cells = len(data) * len(required_columns)
+        missing_cells = data[required_columns].isnull().sum().sum()
+        
+        completeness = 1.0 - (missing_cells / total_cells)
+        return max(0.0, completeness)
+    
+    def _detect_anomalous_patterns(
+        self, 
+        data: pd.DataFrame, 
+        sensor_type: SensorType
+    ) -> float:
+        """Detect anomalous patterns in sensor data."""
+        if 'value' not in data.columns or len(data) < 20:
+            return 0.0
+        
+        anomaly_score = 0.0
+        values = data['value'].values
+        
+        # Check for constant values (stuck sensor)
+        if np.std(values) < 1e-6:
+            anomaly_score += 0.8
+        
+        # Check for extreme spikes
+        if len(values) > 1:
+            diffs = np.abs(np.diff(values))
+            mean_diff = np.mean(diffs)
+            
+            if mean_diff > 0:
+                spike_ratio = np.sum(diffs > 10 * mean_diff) / len(diffs)
+                anomaly_score += spike_ratio * 0.5
+        
+        # Check for periodic patterns that shouldn't be there
+        if sensor_type == SensorType.BME280:  # Environmental should be stable
+            freq_content = np.abs(np.fft.fft(values))
+            if len(freq_content) > 10:
+                # High frequency content in environmental data is suspicious
+                high_freq_power = np.sum(freq_content[len(freq_content)//4:])
+                total_power = np.sum(freq_content)
+                
+                if total_power > 0:
+                    high_freq_ratio = high_freq_power / total_power
+                    if high_freq_ratio > 0.3:
+                        anomaly_score += 0.4
+        
+        return min(1.0, anomaly_score)
+    
+    def _determine_recommended_action(
+        self, 
+        quality_score: float, 
+        errors: List[str], 
+        warnings: List[str]
+    ) -> str:
+        """Determine recommended action based on validation results."""
+        if errors:
+            return "reject_data"
+        
+        if quality_score >= self.quality_thresholds['excellent']:
+            return "accept"
+        elif quality_score >= self.quality_thresholds['good']:
+            return "accept_with_note"
+        elif quality_score >= self.quality_thresholds['acceptable']:
+            return "review_warnings"
+        elif quality_score >= self.quality_thresholds['poor']:
+            return "flag_for_review"
+        else:
+            return "investigate_sensor"

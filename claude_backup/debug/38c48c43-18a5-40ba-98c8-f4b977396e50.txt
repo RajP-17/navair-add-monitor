@@ -1,0 +1,57 @@
+[DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+[DEBUG] >>>>> getSkillsIfEnabled() CALLED <<<<<
+[DEBUG] ENABLE_SKILLS value: true, type: boolean
+[DEBUG] ENABLE_SKILLS check passed, loading skills...
+[DEBUG] Loading skills from directories: managed=/etc/claude-code/.claude/skills, user=/home/navair/.claude/skills, project=/home/navair/Desktop/navair-app/.claude/skills
+[DEBUG] >>>>> getPluginSkills CALLED <<<<<
+[DEBUG] getPluginSkills: Processing 0 enabled plugins
+[DEBUG] Total plugin skills loaded: 0
+[DEBUG] Total plugin commands loaded: 0
+[DEBUG] Registered 0 hooks from 0 plugins
+[DEBUG] Loaded 0 skills total (managed: 0, user: 0, project: 0)
+[DEBUG] getSkillsIfEnabled returning: 0 skill dir commands, 0 plugin skills
+[DEBUG] Creating shell snapshot for bash (/bin/bash)
+[DEBUG] Looking for shell config file: /home/navair/.bashrc
+[DEBUG] Snapshots directory: /home/navair/.claude/shell-snapshots
+[DEBUG] Creating snapshot at: /home/navair/.claude/shell-snapshots/snapshot-bash-1760658471158-8omg6x.sh
+[DEBUG] Shell binary exists: true
+[DEBUG] Execution timeout: 10000ms
+[DEBUG] Writing to temp file: /home/navair/.claude/todos/38c48c43-18a5-40ba-98c8-f4b977396e50-agent-38c48c43-18a5-40ba-98c8-f4b977396e50.json.tmp.31752.1760658471163
+[DEBUG] Temp file written successfully, size: 2 bytes
+[DEBUG] Renaming /home/navair/.claude/todos/38c48c43-18a5-40ba-98c8-f4b977396e50-agent-38c48c43-18a5-40ba-98c8-f4b977396e50.json.tmp.31752.1760658471163 to /home/navair/.claude/todos/38c48c43-18a5-40ba-98c8-f4b977396e50-agent-38c48c43-18a5-40ba-98c8-f4b977396e50.json
+[DEBUG] File /home/navair/.claude/todos/38c48c43-18a5-40ba-98c8-f4b977396e50-agent-38c48c43-18a5-40ba-98c8-f4b977396e50.json written atomically
+[DEBUG] Total plugin agents loaded: 0
+[DEBUG] Shell snapshot created successfully (1776 bytes)
+[DEBUG] Ripgrep first use test: PASSED (mode=builtin, path=/home/navair/.vscode/extensions/anthropic.claude-code-2.0.20-linux-arm64/resources/native-binary/claude)
+[DEBUG] "rg error (signal=null, code=2, stderr: rg: Resource temporarily unavailable (os error 11)\n), 2339 results"
+[DEBUG] Skills and commands included in Skill tool:
+[DEBUG] Slash commands included in SlashCommand tool:
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.31752.1760658472357
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 32694 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.31752.1760658472357 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.31752.1760658472368
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 32694 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.31752.1760658472368 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Writing to temp file: /home/navair/.claude.json.tmp.31752.1760658472424
+[DEBUG] Preserving file permissions: 100600
+[DEBUG] Temp file written successfully, size: 32694 bytes
+[DEBUG] Applied original permissions to temp file
+[DEBUG] Renaming /home/navair/.claude.json.tmp.31752.1760658472424 to /home/navair/.claude.json
+[DEBUG] File /home/navair/.claude.json written atomically
+[DEBUG] Stream started - received first chunk
+[DEBUG] Getting matching hook commands for SubagentStop with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] Getting matching hook commands for SessionStart with query: startup
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "startup" (0 before deduplication)
+[DEBUG] Getting matching hook commands for SessionEnd with query: undefined
+[DEBUG] Found 0 hook matchers in settings
+[DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+[DEBUG] Cleaned up session snapshot: /home/navair/.claude/shell-snapshots/snapshot-bash-1760658471158-8omg6x.sh

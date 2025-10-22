@@ -1,0 +1,1006 @@
+"""Database manager and operations for NAVAIR_ADDITIVE system."""
+
+import asyncio
+import json
+import logging
+import tempfile
+from collections import deque
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from contextlib import asynccontextmanager
+
+from sqlalchemy import select, update, delete, and_, or_, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from config.database_config import get_database, get_db_session
+from config.settings import get_settings
+from .models import (
+    SensorReading, PrintJob, MLPrediction, SystemEvent, CalibrationData,
+    SensorType, QualityFlag, PrintStatus, AlertSeverity, EventType, MaterialType
+)
+
+logger = logging.getLogger(__name__)
+
+
+class CircularBuffer:
+    """Thread-safe circular buffer for high-frequency data."""
+    
+    def __init__(self, maxsize: int = 1000):
+        self.maxsize = maxsize
+        self.buffer = deque(maxlen=maxsize)
+        self._lock = asyncio.Lock()
+    
+    async def append(self, item: Any) -> None:
+        """Add item to buffer."""
+        async with self._lock:
+            self.buffer.append(item)
+    
+    async def extend(self, items: Sequence[Any]) -> None:
+        """Add multiple items to buffer."""
+        async with self._lock:
+            self.buffer.extend(items)
+    
+    async def get_all(self, clear: bool = False) -> List[Any]:
+        """Get all items from buffer."""
+        async with self._lock:
+            items = list(self.buffer)
+            if clear:
+                self.buffer.clear()
+            return items
+    
+    async def get_recent(self, count: int) -> List[Any]:
+        """Get most recent N items."""
+        async with self._lock:
+            return list(self.buffer)[-count:] if count <= len(self.buffer) else list(self.buffer)
+    
+    def __len__(self) -> int:
+        return len(self.buffer)
+    
+    @property
+    def is_full(self) -> bool:
+        """Check if buffer is at capacity."""
+        return len(self.buffer) >= self.maxsize
+
+
+class DatabaseManager:
+    """High-level database operations manager."""
+    
+    SEVERITY_RANK = {
+        AlertSeverity.INFO: 0,
+        AlertSeverity.WARNING: 1,
+        AlertSeverity.CRITICAL: 2,
+        AlertSeverity.EMERGENCY: 3,
+    }
+
+    def __init__(self):
+        self.settings = get_settings()
+        self._buffers: Dict[str, CircularBuffer] = {}
+        self._batch_tasks: Dict[str, asyncio.Task] = {}
+        self._shutdown_event = asyncio.Event()
+        
+        # Initialize buffers for each sensor type
+        for sensor_type in SensorType:
+            buffer_size = (
+                self.settings.database.buffer_size_high_freq 
+                if sensor_type in [SensorType.LASER_X, SensorType.LASER_Y]
+                else self.settings.database.buffer_size_default
+            )
+            self._buffers[sensor_type.value] = CircularBuffer(buffer_size)
+    
+    async def start_batch_processors(self) -> None:
+        """Start background batch processing tasks."""
+        for sensor_type in SensorType:
+            task = asyncio.create_task(
+                self._batch_write_sensor_data(sensor_type.value)
+            )
+            self._batch_tasks[sensor_type.value] = task
+        
+        logger.info("Database batch processors started")
+    
+    async def stop_batch_processors(self) -> None:
+        """Stop background batch processing tasks."""
+        self._shutdown_event.set()
+        
+        # Wait for all tasks to complete
+        if self._batch_tasks:
+            await asyncio.gather(*self._batch_tasks.values(), return_exceptions=True)
+        
+        # Flush remaining data
+        await self._flush_all_buffers()
+        
+        logger.info("Database batch processors stopped")
+    
+    async def _batch_write_sensor_data(self, sensor_type: str) -> None:
+        """Background task for batch writing sensor data."""
+        buffer = self._buffers[sensor_type]
+        
+        while not self._shutdown_event.is_set():
+            try:
+                # Wait for batch interval or shutdown
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(),
+                    timeout=self.settings.database.batch_write_interval
+                )
+                break  # Shutdown requested
+            except asyncio.TimeoutError:
+                # Time to write batch
+                pass
+            
+            # Get data from buffer
+            data = await buffer.get_all(clear=True)
+            if not data:
+                continue
+            
+            try:
+                await self._write_sensor_readings_batch(data)
+                logger.debug(f"Batch wrote {len(data)} {sensor_type} readings")
+            except Exception as e:
+                logger.error(f"Failed to batch write {sensor_type} data: {e}")
+                # Re-add data to buffer for retry
+                await buffer.extend(data)
+    
+    async def _write_sensor_readings_batch(self, readings: List[Dict]) -> None:
+        """Write batch of sensor readings to database."""
+        if not readings:
+            return
+        
+        async with get_db_session() as session:
+            # Convert dicts to SensorReading objects
+            db_readings = [
+                SensorReading(**reading_data) 
+                for reading_data in readings
+            ]
+            
+            session.add_all(db_readings)
+            await session.commit()
+    
+    async def _flush_all_buffers(self) -> None:
+        """Flush all remaining buffer data to database."""
+        for sensor_type, buffer in self._buffers.items():
+            data = await buffer.get_all(clear=True)
+            if data:
+                try:
+                    await self._write_sensor_readings_batch(data)
+                    logger.info(f"Flushed {len(data)} {sensor_type} readings")
+                except Exception as e:
+                    logger.error(f"Failed to flush {sensor_type} buffer: {e}")
+    
+    # Sensor Reading Operations
+    
+    async def add_sensor_reading(
+        self, 
+        sensor_type: SensorType,
+        value: float,
+        sensor_id: Optional[str] = None,
+        unit: Optional[str] = None,
+        quality_flag: QualityFlag = QualityFlag.GOOD,
+        metadata: Optional[Dict] = None,
+        print_job_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None
+    ) -> None:
+        """Add sensor reading to buffer for batch processing."""
+        
+        reading_data = {
+            'sensor_type': sensor_type,
+            'sensor_id': sensor_id,
+            'value': value,
+            'unit': unit,
+            'quality_flag': quality_flag,
+            'metadata_json': metadata,
+            'print_job_id': print_job_id,
+            'timestamp': timestamp or datetime.utcnow()
+        }
+        
+        buffer = self._buffers.get(sensor_type.value)
+        if buffer:
+            await buffer.append(reading_data)
+        else:
+            # Fallback to immediate write
+            await self._write_sensor_readings_batch([reading_data])
+    
+    async def get_sensor_readings(
+        self,
+        sensor_type: Optional[SensorType] = None,
+        sensor_id: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        quality_flags: Optional[List[QualityFlag]] = None,
+        print_job_id: Optional[str] = None,
+        limit: int = 1000,
+        offset: int = 0
+    ) -> List[SensorReading]:
+        """Query sensor readings with filters."""
+        
+        async with get_db_session() as session:
+            query = select(SensorReading)
+            
+            # Apply filters
+            conditions = []
+            if sensor_type:
+                conditions.append(SensorReading.sensor_type == sensor_type)
+            if sensor_id:
+                conditions.append(SensorReading.sensor_id == sensor_id)
+            if start_time:
+                conditions.append(SensorReading.timestamp >= start_time)
+            if end_time:
+                conditions.append(SensorReading.timestamp <= end_time)
+            if quality_flags:
+                conditions.append(SensorReading.quality_flag.in_(quality_flags))
+            if print_job_id:
+                conditions.append(SensorReading.print_job_id == print_job_id)
+            
+            if conditions:
+                query = query.where(and_(*conditions))
+            
+            query = query.order_by(desc(SensorReading.timestamp))
+            query = query.offset(offset).limit(limit)
+            
+            result = await session.execute(query)
+            return result.scalars().all()
+    
+    async def get_latest_sensor_reading(
+        self,
+        sensor_type: SensorType,
+        sensor_id: Optional[str] = None
+    ) -> Optional[SensorReading]:
+        """Get the most recent reading for a sensor."""
+        
+        async with get_db_session() as session:
+            query = select(SensorReading).where(
+                SensorReading.sensor_type == sensor_type
+            )
+            
+            if sensor_id:
+                query = query.where(SensorReading.sensor_id == sensor_id)
+            
+            query = query.order_by(desc(SensorReading.timestamp)).limit(1)
+            
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+    
+    async def get_sensor_statistics(
+        self,
+        sensor_type: SensorType,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Get statistical summary for sensor data."""
+        
+        async with get_db_session() as session:
+            query = select(
+                func.count(SensorReading.id).label('count'),
+                func.avg(SensorReading.value).label('mean'),
+                func.min(SensorReading.value).label('min'),
+                func.max(SensorReading.value).label('max'),
+                func.stddev(SensorReading.value).label('stddev')
+            ).where(SensorReading.sensor_type == sensor_type)
+            
+            if start_time:
+                query = query.where(SensorReading.timestamp >= start_time)
+            if end_time:
+                query = query.where(SensorReading.timestamp <= end_time)
+            
+            result = await session.execute(query)
+            row = result.first()
+            
+            return {
+                'count': row.count or 0,
+                'mean': float(row.mean) if row.mean else 0.0,
+                'min': float(row.min) if row.min else 0.0,
+                'max': float(row.max) if row.max else 0.0,
+                'stddev': float(row.stddev) if row.stddev else 0.0
+            }
+    
+    # Print Job Operations
+    
+    async def create_print_job(self, **kwargs) -> PrintJob:
+        """Create a new print job."""
+        async with get_db_session() as session:
+            print_job = PrintJob(**kwargs)
+            session.add(print_job)
+            await session.commit()
+            await session.refresh(print_job)
+            return print_job
+    
+    async def get_print_job(self, job_id: str) -> Optional[PrintJob]:
+        """Get print job by UUID."""
+        async with get_db_session() as session:
+            query = select(PrintJob).where(PrintJob.uuid == job_id)
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+    
+    async def update_print_job(
+        self, 
+        job_id: str, 
+        **updates
+    ) -> Optional[PrintJob]:
+        """Update print job fields."""
+        async with get_db_session() as session:
+            query = update(PrintJob).where(
+                PrintJob.uuid == job_id
+            ).values(**updates)
+            
+            await session.execute(query)
+            await session.commit()
+            
+            # Return updated job
+            return await self.get_print_job(job_id)
+    
+    async def get_active_print_jobs(self) -> List[PrintJob]:
+        """Get all currently active print jobs."""
+        async with get_db_session() as session:
+            query = select(PrintJob).where(
+                PrintJob.status.in_([
+                    PrintStatus.PREPARING, 
+                    PrintStatus.PRINTING, 
+                    PrintStatus.PAUSED
+                ])
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+    
+    async def get_print_jobs_history(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        status: Optional[PrintStatus] = None,
+        material_type: Optional[str] = None,
+        limit: int = 100
+    ) -> List[PrintJob]:
+        """Get print job history with filters."""
+        async with get_db_session() as session:
+            query = select(PrintJob)
+            
+            conditions = []
+            if start_date:
+                conditions.append(PrintJob.start_time >= start_date)
+            if end_date:
+                conditions.append(PrintJob.start_time <= end_date)
+            if status:
+                conditions.append(PrintJob.status == status)
+            if material_type:
+                conditions.append(PrintJob.material_type == material_type)
+            
+            if conditions:
+                query = query.where(and_(*conditions))
+            
+            query = query.order_by(desc(PrintJob.start_time)).limit(limit)
+            
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    async def get_active_print_job_by_name(self, job_name: str) -> Optional[PrintJob]:
+        """Return the most recent active print job matching the provided name."""
+        async with get_db_session() as session:
+            query = (
+                select(PrintJob)
+                .where(
+                    and_(
+                        PrintJob.name == job_name,
+                        PrintJob.status.in_([
+                            PrintStatus.PREPARING,
+                            PrintStatus.PRINTING,
+                            PrintStatus.PAUSED
+                        ])
+                    )
+                )
+                .order_by(desc(PrintJob.start_time), desc(PrintJob.created_at))
+                .limit(1)
+            )
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    async def get_latest_completed_print_job(self) -> Optional[PrintJob]:
+        """Return the most recently completed/terminated print job."""
+        async with get_db_session() as session:
+            query = (
+                select(PrintJob)
+                .where(
+                    PrintJob.status.in_([
+                        PrintStatus.COMPLETED,
+                        PrintStatus.FAILED,
+                        PrintStatus.ABORTED
+                    ])
+                )
+                .order_by(
+                    desc(PrintJob.end_time),
+                    desc(PrintJob.updated_at),
+                    desc(PrintJob.created_at)
+                )
+                .limit(1)
+            )
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    def _quality_grade(self, score: Optional[float]) -> Optional[str]:
+        if score is None:
+            return None
+        if score >= 0.9:
+            return "excellent"
+        if score >= 0.8:
+            return "good"
+        if score >= 0.7:
+            return "acceptable"
+        if score >= 0.6:
+            return "poor"
+        return "critical"
+
+    async def _summarize_print_job_sensors(
+        self,
+        job_id: Optional[str],
+        start_time: Optional[datetime],
+        end_time: Optional[datetime]
+    ) -> List[Dict[str, Any]]:
+        async with get_db_session() as session:
+            conditions = []
+            if job_id:
+                conditions.append(SensorReading.print_job_id == job_id)
+            if start_time:
+                conditions.append(SensorReading.timestamp >= start_time)
+            if end_time:
+                conditions.append(SensorReading.timestamp <= end_time)
+
+            base_query = select(
+                SensorReading.sensor_type.label("sensor_type"),
+                func.count(SensorReading.id).label("samples"),
+                func.avg(SensorReading.value).label("mean"),
+                func.min(SensorReading.value).label("minimum"),
+                func.max(SensorReading.value).label("maximum"),
+                func.stddev(SensorReading.value).label("stddev")
+            )
+            quality_query = select(
+                SensorReading.sensor_type.label("sensor_type"),
+                SensorReading.quality_flag.label("quality_flag"),
+                func.count(SensorReading.id).label("count")
+            )
+
+            if conditions:
+                filter_clause = and_(*conditions)
+                base_query = base_query.where(filter_clause)
+                quality_query = quality_query.where(filter_clause)
+
+            base_query = base_query.group_by(SensorReading.sensor_type)
+            quality_query = quality_query.group_by(
+                SensorReading.sensor_type,
+                SensorReading.quality_flag
+            )
+
+            summary_map: Dict[str, Dict[str, Any]] = {}
+
+            base_result = await session.execute(base_query)
+            for row in base_result:
+                sensor_type = (
+                    row.sensor_type.value
+                    if isinstance(row.sensor_type, SensorType)
+                    else str(row.sensor_type)
+                )
+                summary_map[sensor_type] = {
+                    "sensor_type": sensor_type,
+                    "samples": int(row.samples or 0),
+                    "average": float(row.mean) if row.mean is not None else None,
+                    "minimum": float(row.minimum) if row.minimum is not None else None,
+                    "maximum": float(row.maximum) if row.maximum is not None else None,
+                    "stddev": float(row.stddev) if row.stddev is not None else None,
+                    "quality_breakdown": {}
+                }
+
+            quality_result = await session.execute(quality_query)
+            for row in quality_result:
+                sensor_type = (
+                    row.sensor_type.value
+                    if isinstance(row.sensor_type, SensorType)
+                    else str(row.sensor_type)
+                )
+                quality_flag = (
+                    row.quality_flag.value
+                    if isinstance(row.quality_flag, QualityFlag)
+                    else str(row.quality_flag)
+                )
+                summary_map.setdefault(sensor_type, {
+                    "sensor_type": sensor_type,
+                    "samples": 0,
+                    "average": None,
+                    "minimum": None,
+                    "maximum": None,
+                    "stddev": None,
+                    "quality_breakdown": {}
+                })
+                summary_map[sensor_type]["quality_breakdown"][quality_flag] = int(row.count or 0)
+
+            return sorted(summary_map.values(), key=lambda item: item["sensor_type"])
+
+    async def _get_events_for_print(
+        self,
+        job_id: Optional[str],
+        start_time: Optional[datetime],
+        end_time: Optional[datetime],
+        min_severity: AlertSeverity = AlertSeverity.INFO
+    ) -> List[Dict[str, Any]]:
+        async with get_db_session() as session:
+            severity_threshold = self.SEVERITY_RANK[min_severity]
+            allowed_severities = [
+                severity.value for severity in AlertSeverity
+                if self.SEVERITY_RANK[severity] >= severity_threshold
+            ]
+
+            conditions = [SystemEvent.severity.in_(allowed_severities)]
+            if job_id:
+                conditions.append(SystemEvent.print_job_id == job_id)
+            if start_time:
+                conditions.append(SystemEvent.timestamp >= start_time)
+            if end_time:
+                conditions.append(SystemEvent.timestamp <= end_time)
+
+            query = (
+                select(SystemEvent)
+                .where(and_(*conditions))
+                .order_by(SystemEvent.timestamp.asc())
+            )
+
+            result = await session.execute(query)
+            events: List[Dict[str, Any]] = []
+            for event in result.scalars():
+                event_type = (
+                    event.event_type.value
+                    if isinstance(event.event_type, EventType)
+                    else str(event.event_type)
+                )
+                severity = (
+                    event.severity.value
+                    if isinstance(event.severity, AlertSeverity)
+                    else str(event.severity)
+                )
+                severity_enum = (
+                    event.severity
+                    if isinstance(event.severity, AlertSeverity)
+                    else AlertSeverity(severity)
+                )
+                events.append({
+                    "id": event.id,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                    "event_type": event_type,
+                    "severity": severity,
+                    "severity_rank": self.SEVERITY_RANK.get(severity_enum, 0),
+                    "component": event.component,
+                    "source_id": event.source_id,
+                    "message": event.message,
+                    "metadata": event.metadata_dict or {},
+                    "acknowledged": event.acknowledged,
+                    "resolved": event.resolved
+                })
+            return events
+
+    async def _get_predictions_for_print(
+        self,
+        job_id: Optional[str],
+        start_time: Optional[datetime],
+        end_time: Optional[datetime]
+    ) -> List[Dict[str, Any]]:
+        if not job_id:
+            return []
+
+        async with get_db_session() as session:
+            conditions = [MLPrediction.print_job_id == job_id]
+            if start_time:
+                conditions.append(MLPrediction.timestamp >= start_time)
+            if end_time:
+                conditions.append(MLPrediction.timestamp <= end_time)
+
+            query = (
+                select(MLPrediction)
+                .where(and_(*conditions))
+                .order_by(MLPrediction.timestamp.asc())
+            )
+
+            result = await session.execute(query)
+            predictions: List[Dict[str, Any]] = []
+
+            for prediction in result.scalars():
+                probabilities = None
+                if prediction.probability_distribution:
+                    try:
+                        probabilities = json.loads(prediction.probability_distribution)
+                    except json.JSONDecodeError:
+                        probabilities = prediction.probability_distribution
+
+                predictions.append({
+                    "id": prediction.id,
+                    "timestamp": prediction.timestamp.isoformat() if prediction.timestamp else None,
+                    "model_name": prediction.model_name,
+                    "model_version": prediction.model_version,
+                    "prediction_type": prediction.prediction_type,
+                    "predicted_class": prediction.predicted_class,
+                    "confidence": float(prediction.confidence),
+                    "probabilities": probabilities
+                })
+
+            return predictions
+
+    async def generate_print_report(
+        self,
+        job_id: str,
+        include_events: bool = True,
+        include_predictions: bool = True,
+        include_sensor_summary: bool = True
+    ) -> Dict[str, Any]:
+        job = await self.get_print_job(job_id)
+        if not job:
+            raise ValueError(f"Print job '{job_id}' not found")
+
+        start_time = job.start_time or job.created_at
+        end_time = job.end_time or datetime.utcnow()
+        duration_seconds = None
+        if start_time and end_time:
+            duration_seconds = int((end_time - start_time).total_seconds())
+
+        sensor_summary = []
+        if include_sensor_summary:
+            sensor_summary = await self._summarize_print_job_sensors(job.uuid, start_time, end_time)
+
+        events: List[Dict[str, Any]] = []
+        if include_events:
+            events = await self._get_events_for_print(job.uuid, start_time, end_time, AlertSeverity.INFO)
+
+        predictions: List[Dict[str, Any]] = []
+        if include_predictions:
+            predictions = await self._get_predictions_for_print(job.uuid, start_time, end_time)
+
+        severity_counts: Dict[str, int] = {}
+        for event in events:
+            severity_counts[event["severity"]] = severity_counts.get(event["severity"], 0) + 1
+
+        faults = [
+            event for event in events
+            if event["severity_rank"] >= self.SEVERITY_RANK[AlertSeverity.CRITICAL]
+        ]
+        warnings = [
+            event for event in events
+            if event["severity_rank"] == self.SEVERITY_RANK[AlertSeverity.WARNING]
+        ]
+
+        timeline = sorted(
+            [
+                *[
+                    {
+                        "timestamp": event["timestamp"],
+                        "category": "event",
+                        "label": event["event_type"],
+                        "severity": event["severity"],
+                        "message": event["message"],
+                        "component": event["component"]
+                    }
+                    for event in events
+                ],
+                *[
+                    {
+                        "timestamp": prediction["timestamp"],
+                        "category": "prediction",
+                        "label": prediction["prediction_type"],
+                        "severity": "info",
+                        "message": prediction.get("predicted_class"),
+                        "confidence": prediction.get("confidence")
+                    }
+                    for prediction in predictions
+                ]
+            ],
+            key=lambda point: point["timestamp"] or ""
+        )
+
+        report = {
+            "job": {
+                "uuid": job.uuid,
+                "name": job.name,
+                "status": job.status.value if isinstance(job.status, PrintStatus) else str(job.status),
+                "material_type": job.material_type.value if isinstance(job.material_type, MaterialType) else str(job.material_type),
+                "quality_score": job.quality_score,
+                "quality_grade": self._quality_grade(job.quality_score),
+                "start_time": start_time.isoformat() if start_time else None,
+                "end_time": end_time.isoformat() if end_time else None,
+                "estimated_duration": job.estimated_duration,
+                "actual_duration": job.actual_duration or duration_seconds,
+                "gcode_file": job.gcode_file,
+                "layer_height": job.layer_height,
+                "infill_percentage": job.infill_percentage,
+                "print_temperature": job.print_temperature,
+                "bed_temperature": job.bed_temperature,
+                "print_speed": job.print_speed,
+                "notes": job.notes
+            },
+            "summary": {
+                "report_generated_at": datetime.utcnow().isoformat(),
+                "duration_seconds": duration_seconds,
+                "fault_count": len(faults),
+                "warning_count": len(warnings),
+                "event_severity_counts": severity_counts
+            },
+            "sensors": sensor_summary,
+            "events": events,
+            "faults": faults,
+            "warnings": warnings,
+            "ml_predictions": predictions,
+            "timeline": timeline
+        }
+
+        return report
+
+    async def save_print_report(
+        self,
+        report: Dict[str, Any],
+        directory: Optional[Union[str, Path]] = None,
+        filename: Optional[str] = None,
+        persist: bool = True
+    ) -> Path:
+        """Persist a generated print report and return the file path."""
+        job_uuid = report.get("job", {}).get("uuid", "unknown")
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+        if persist:
+            report_dir = Path(directory) if directory else Path(self.settings.data_dir) / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_filename = filename or f"print_report_{job_uuid}_{timestamp}.json"
+            path = report_dir / report_filename
+        else:
+            tmp_file = tempfile.NamedTemporaryFile(
+                prefix=f"print_report_{job_uuid}_",
+                suffix=".json",
+                delete=False
+            )
+            path = Path(tmp_file.name)
+            tmp_file.close()
+
+        serialized = json.dumps(report, indent=2, default=str)
+        await asyncio.to_thread(path.write_text, serialized, encoding="utf-8")
+        return path
+
+    # ML Prediction Operations
+    
+    async def add_ml_prediction(self, **kwargs) -> MLPrediction:
+        """Add ML prediction result."""
+        async with get_db_session() as session:
+            prediction = MLPrediction(**kwargs)
+            session.add(prediction)
+            await session.commit()
+            await session.refresh(prediction)
+            return prediction
+    
+    async def get_latest_predictions(
+        self,
+        model_name: Optional[str] = None,
+        prediction_type: Optional[str] = None,
+        limit: int = 100
+    ) -> List[MLPrediction]:
+        """Get latest ML predictions."""
+        async with get_db_session() as session:
+            query = select(MLPrediction)
+            
+            conditions = []
+            if model_name:
+                conditions.append(MLPrediction.model_name == model_name)
+            if prediction_type:
+                conditions.append(MLPrediction.prediction_type == prediction_type)
+            
+            if conditions:
+                query = query.where(and_(*conditions))
+            
+            query = query.order_by(desc(MLPrediction.timestamp)).limit(limit)
+            
+            result = await session.execute(query)
+            return result.scalars().all()
+    
+    # System Event Operations
+    
+    async def add_system_event(
+        self,
+        event_type: EventType,
+        severity: AlertSeverity,
+        message: str,
+        component: Optional[str] = None,
+        source_id: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+        **kwargs
+    ) -> SystemEvent:
+        """Add system event/alert."""
+        async with get_db_session() as session:
+            event = SystemEvent(
+                event_type=event_type,
+                severity=severity,
+                message=message,
+                component=component,
+                source_id=source_id,
+                metadata_json=metadata,
+                **kwargs
+            )
+            session.add(event)
+            await session.commit()
+            await session.refresh(event)
+            
+            logger.info(f"System event added: {event_type.value} - {message}")
+            return event
+    
+    async def get_recent_events(
+        self,
+        severity: Optional[AlertSeverity] = None,
+        event_type: Optional[EventType] = None,
+        unresolved_only: bool = False,
+        limit: int = 100
+    ) -> List[SystemEvent]:
+        """Get recent system events."""
+        async with get_db_session() as session:
+            query = select(SystemEvent)
+            
+            conditions = []
+            if severity:
+                conditions.append(SystemEvent.severity == severity)
+            if event_type:
+                conditions.append(SystemEvent.event_type == event_type)
+            if unresolved_only:
+                conditions.append(SystemEvent.resolved == False)
+            
+            if conditions:
+                query = query.where(and_(*conditions))
+            
+            query = query.order_by(desc(SystemEvent.timestamp)).limit(limit)
+            
+            result = await session.execute(query)
+            return result.scalars().all()
+    
+    async def acknowledge_event(
+        self,
+        event_id: int,
+        acknowledged_by: str
+    ) -> None:
+        """Acknowledge a system event."""
+        async with get_db_session() as session:
+            await session.execute(
+                update(SystemEvent)
+                .where(SystemEvent.id == event_id)
+                .values(
+                    acknowledged=True,
+                    acknowledged_at=datetime.utcnow(),
+                    acknowledged_by=acknowledged_by
+                )
+            )
+            await session.commit()
+    
+    # Calibration Data Operations
+    
+    async def add_calibration_data(self, **kwargs) -> CalibrationData:
+        """Add sensor calibration data."""
+        async with get_db_session() as session:
+            # Deactivate previous calibrations for same sensor
+            if 'sensor_type' in kwargs:
+                await session.execute(
+                    update(CalibrationData)
+                    .where(and_(
+                        CalibrationData.sensor_type == kwargs['sensor_type'],
+                        CalibrationData.sensor_id == kwargs.get('sensor_id'),
+                        CalibrationData.is_active == True
+                    ))
+                    .values(is_active=False)
+                )
+            
+            calibration = CalibrationData(**kwargs)
+            session.add(calibration)
+            await session.commit()
+            await session.refresh(calibration)
+            return calibration
+    
+    async def get_active_calibration(
+        self,
+        sensor_type: SensorType,
+        sensor_id: Optional[str] = None
+    ) -> Optional[CalibrationData]:
+        """Get active calibration for sensor."""
+        async with get_db_session() as session:
+            query = select(CalibrationData).where(
+                and_(
+                    CalibrationData.sensor_type == sensor_type,
+                    CalibrationData.is_active == True,
+                    CalibrationData.valid_from <= datetime.utcnow()
+                )
+            )
+            
+            if sensor_id:
+                query = query.where(CalibrationData.sensor_id == sensor_id)
+            
+            # Check valid_until if set
+            query = query.where(
+                or_(
+                    CalibrationData.valid_until.is_(None),
+                    CalibrationData.valid_until > datetime.utcnow()
+                )
+            )
+            
+            query = query.order_by(desc(CalibrationData.timestamp)).limit(1)
+            
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+    
+    # Database Maintenance Operations
+    
+    async def cleanup_old_data(
+        self,
+        sensor_data_days: int = 30,
+        ml_prediction_days: int = 90,
+        event_data_days: int = 365
+    ) -> Dict[str, int]:
+        """Clean up old data based on retention policies."""
+        
+        async with get_db_session() as session:
+            counts = {}
+            
+            # Clean up old sensor readings
+            cutoff_date = datetime.utcnow() - timedelta(days=sensor_data_days)
+            result = await session.execute(
+                delete(SensorReading).where(
+                    SensorReading.timestamp < cutoff_date
+                )
+            )
+            counts['sensor_readings'] = result.rowcount
+            
+            # Clean up old ML predictions  
+            cutoff_date = datetime.utcnow() - timedelta(days=ml_prediction_days)
+            result = await session.execute(
+                delete(MLPrediction).where(
+                    MLPrediction.timestamp < cutoff_date
+                )
+            )
+            counts['ml_predictions'] = result.rowcount
+            
+            # Clean up old resolved events
+            cutoff_date = datetime.utcnow() - timedelta(days=event_data_days)
+            result = await session.execute(
+                delete(SystemEvent).where(
+                    and_(
+                        SystemEvent.timestamp < cutoff_date,
+                        SystemEvent.resolved == True
+                    )
+                )
+            )
+            counts['system_events'] = result.rowcount
+            
+            await session.commit()
+            
+            logger.info(f"Database cleanup completed: {counts}")
+            return counts
+    
+    async def get_database_health(self) -> Dict[str, Any]:
+        """Get database health and statistics."""
+        db = await get_database()
+        
+        # Get basic stats
+        stats = await db.get_database_stats()
+        
+        # Get table counts
+        async with get_db_session() as session:
+            sensor_count = await session.scalar(select(func.count(SensorReading.id)))
+            job_count = await session.scalar(select(func.count(PrintJob.id)))
+            prediction_count = await session.scalar(select(func.count(MLPrediction.id)))
+            event_count = await session.scalar(select(func.count(SystemEvent.id)))
+            calibration_count = await session.scalar(select(func.count(CalibrationData.id)))
+            
+            # Get buffer status
+            buffer_status = {}
+            for sensor_type, buffer in self._buffers.items():
+                buffer_status[sensor_type] = {
+                    'size': len(buffer),
+                    'capacity': buffer.maxsize,
+                    'full': buffer.is_full
+                }
+        
+        return {
+            **stats,
+            'table_counts': {
+                'sensor_readings': sensor_count,
+                'print_jobs': job_count,
+                'ml_predictions': prediction_count,
+                'system_events': event_count,
+                'calibration_data': calibration_count
+            },
+            'buffer_status': buffer_status,
+            'batch_tasks': {
+                name: not task.done() for name, task in self._batch_tasks.items()
+            }
+        }

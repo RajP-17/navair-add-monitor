@@ -1,0 +1,412 @@
+"""Main application entry point for NAVAIR_ADDITIVE system."""
+
+import asyncio
+import logging
+import signal
+import sys
+from pathlib import Path
+from typing import Optional
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config.settings import get_settings
+from config.logging_config import setup_logging
+from config.database_config import get_database, close_database
+
+from .data.database import DatabaseManager
+from .sensors.bme280_handler import BME280Handler
+from .sensors.mpu6050_handler import MPU6050Handler
+from .sensors.laser_array_handler import LaserArrayHandler
+from .sensors.printer_api_handler import PrinterAPIHandler
+from .data.models import SensorType
+from .utils.performance_monitor import PerformanceMonitor
+from .communication.api_server import APIServer
+
+logger = logging.getLogger(__name__)
+
+
+class NAVAIRAdditive:
+    """Main NAVAIR_ADDITIVE application class."""
+    
+    def __init__(self):
+        """Initialize the NAVAIR_ADDITIVE system."""
+        self.settings = get_settings()
+        self.db_manager: Optional[DatabaseManager] = None
+        self.performance_monitor: Optional[PerformanceMonitor] = None
+        self.api_server: Optional[APIServer] = None
+        
+        # Sensor handlers
+        self.sensors = {}
+        self._shutdown_event = asyncio.Event()
+        
+        # System health
+        self.system_healthy = True
+        self.startup_complete = False
+    
+    async def initialize(self) -> bool:
+        """Initialize all system components."""
+        try:
+            logger.info("Initializing NAVAIR_ADDITIVE system...")
+            
+            # Initialize database
+            db = await get_database()
+            await db.initialize()
+            
+            # Initialize database manager
+            self.db_manager = DatabaseManager()
+            await self.db_manager.start_batch_processors()
+            
+            # Initialize performance monitor
+            self.performance_monitor = PerformanceMonitor()
+            await self.performance_monitor.start()
+            
+            # Initialize sensors
+            await self._initialize_sensors()
+            
+            # Initialize API server
+            self.api_server = APIServer(
+                self.sensors,
+                self.db_manager,
+                self.performance_monitor
+            )
+            await self.api_server.start()
+            
+            # Register shutdown handlers
+            self._register_shutdown_handlers()
+            
+            self.startup_complete = True
+            logger.info("NAVAIR_ADDITIVE system initialization complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize system: {e}")
+            await self.shutdown()
+            return False
+    
+    async def _initialize_sensors(self) -> None:
+        """Initialize all sensor handlers."""
+        sensor_configs = [
+            # Environmental sensor
+            {
+                'class': BME280Handler,
+                'id': 'bme280_main',
+                'type': SensorType.BME280,
+                'config': {
+                    'i2c_address': self.settings.sensors.bme280_address,
+                    'polling_rate': 1/self.settings.sensors.bme280_polling_rate
+                }
+            },
+            
+            # Vibration sensors
+            {
+                'class': MPU6050Handler,
+                'id': 'mpu6050_bed',
+                'type': SensorType.MPU6050_BED,
+                'config': {
+                    'i2c_address': self.settings.sensors.mpu6050_bed_address,
+                    'polling_rate': 1/self.settings.sensors.mpu6050_polling_rate,
+                    'data_mode': 'magnitude'
+                }
+            },
+            {
+                'class': MPU6050Handler,
+                'id': 'mpu6050_body',
+                'type': SensorType.MPU6050_BODY,
+                'config': {
+                    'i2c_address': self.settings.sensors.mpu6050_body_address,
+                    'polling_rate': 1/self.settings.sensors.mpu6050_polling_rate,
+                    'data_mode': 'magnitude'
+                }
+            },
+            
+            # Laser array sensors
+            {
+                'class': LaserArrayHandler,
+                'id': 'laser_x_array',
+                'type': SensorType.LASER_X,
+                'config': {
+                    'serial_port': self.settings.sensors.laser_x_serial_port,
+                    'array_size': self.settings.sensors.laser_array_size,
+                    'polling_rate': 1/self.settings.sensors.laser_polling_rate
+                }
+            },
+            {
+                'class': LaserArrayHandler,
+                'id': 'laser_y_array',
+                'type': SensorType.LASER_Y,
+                'config': {
+                    'serial_port': self.settings.sensors.laser_y_serial_port,
+                    'array_size': self.settings.sensors.laser_array_size,
+                    'polling_rate': 1/self.settings.sensors.laser_polling_rate
+                }
+            },
+            
+            # Printer API sensors
+            {
+                'class': PrinterAPIHandler,
+                'id': 'printer_temp',
+                'type': SensorType.PRINTER_TEMP,
+                'config': {
+                    'api_url': self.settings.sensors.printer_api_url,
+                    'polling_rate': 1/self.settings.sensors.printer_temp_polling_rate,
+                    'timeout': self.settings.sensors.printer_api_timeout,
+                    'auth_enabled': self.settings.sensors.printer_auth_digest
+                }
+            },
+            {
+                'class': PrinterAPIHandler,
+                'id': 'printer_position',
+                'type': SensorType.PRINTER_POSITION,
+                'config': {
+                    'api_url': self.settings.sensors.printer_api_url,
+                    'polling_rate': 1/self.settings.sensors.printer_position_polling_rate,
+                    'timeout': self.settings.sensors.printer_api_timeout,
+                    'auth_enabled': self.settings.sensors.printer_auth_digest
+                }
+            },
+            {
+                'class': PrinterAPIHandler,
+                'id': 'printer_flow',
+                'type': SensorType.PRINTER_FLOW,
+                'config': {
+                    'api_url': self.settings.sensors.printer_api_url,
+                    'polling_rate': 1/self.settings.sensors.printer_temp_polling_rate,
+                    'timeout': self.settings.sensors.printer_api_timeout,
+                    'auth_enabled': self.settings.sensors.printer_auth_digest
+                }
+            }
+        ]
+        
+        # Initialize sensors
+        for sensor_config in sensor_configs:
+            try:
+                sensor = sensor_config['class'](
+                    sensor_id=sensor_config['id'],
+                    sensor_type=sensor_config['type'],
+                    **sensor_config['config']
+                )
+                
+                # Add data callback to send to database
+                sensor.add_data_callback(self._handle_sensor_data)
+                
+                # Store sensor
+                self.sensors[sensor_config['id']] = sensor
+                
+                logger.info(f"Initialized sensor: {sensor_config['id']}")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize sensor {sensor_config['id']}: {e}")
+                self.system_healthy = False
+    
+    async def _handle_sensor_data(self, reading) -> None:
+        """Handle incoming sensor data."""
+        if not self.db_manager:
+            return
+        
+        try:
+            # Add to database via database manager
+            await self.db_manager.add_sensor_reading(
+                sensor_type=reading.sensor_type,
+                value=reading.value if not isinstance(reading.value, dict) else reading.value.get('current', 0),
+                sensor_id=reading.sensor_id,
+                unit=reading.unit,
+                quality_flag=reading.quality_flag,
+                metadata=reading.metadata,
+                timestamp=reading.timestamp
+            )
+            
+        except Exception as e:
+            logger.error(f"Error handling sensor data: {e}")
+    
+    async def start(self) -> None:
+        """Start the NAVAIR_ADDITIVE system."""
+        if not self.startup_complete:
+            logger.error("System not initialized. Call initialize() first.")
+            return
+        
+        logger.info("Starting NAVAIR_ADDITIVE system...")
+        
+        # Start all sensors
+        sensor_tasks = []
+        for sensor_id, sensor in self.sensors.items():
+            try:
+                task = asyncio.create_task(sensor.start_reading())
+                sensor_tasks.append(task)
+                logger.info(f"Started sensor: {sensor_id}")
+            except Exception as e:
+                logger.error(f"Failed to start sensor {sensor_id}: {e}")
+                self.system_healthy = False
+        
+        # Wait for all sensors to start
+        if sensor_tasks:
+            try:
+                results = await asyncio.gather(*sensor_tasks, return_exceptions=True)
+                failed_count = sum(1 for r in results if isinstance(r, Exception) or r is False)
+                
+                if failed_count > 0:
+                    logger.warning(f"{failed_count} sensors failed to start")
+                    self.system_healthy = False
+                else:
+                    logger.info("All sensors started successfully")
+            except Exception as e:
+                logger.error(f"Error starting sensors: {e}")
+                self.system_healthy = False
+        
+        logger.info("NAVAIR_ADDITIVE system started successfully")
+        
+        # Main system loop
+        await self._main_loop()
+    
+    async def _main_loop(self) -> None:
+        """Main system monitoring loop."""
+        logger.info("Entering main system loop")
+        
+        while not self._shutdown_event.is_set():
+            try:
+                # System health checks
+                await self._perform_health_checks()
+                
+                # Performance monitoring
+                if self.performance_monitor:
+                    await self.performance_monitor.update_metrics()
+                
+                # Sleep before next iteration
+                await asyncio.sleep(30)  # 30-second health check interval
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                await asyncio.sleep(5)  # Brief delay on error
+        
+        logger.info("Main system loop terminated")
+    
+    async def _perform_health_checks(self) -> None:
+        """Perform system health checks."""
+        try:
+            # Check sensor health
+            unhealthy_sensors = []
+            for sensor_id, sensor in self.sensors.items():
+                if not sensor.is_connected or not await sensor.health_check():
+                    unhealthy_sensors.append(sensor_id)
+            
+            if unhealthy_sensors:
+                logger.warning(f"Unhealthy sensors: {unhealthy_sensors}")
+                self.system_healthy = False
+            else:
+                if not self.system_healthy:
+                    logger.info("All sensors healthy - system recovered")
+                    self.system_healthy = True
+            
+            # Check database health
+            if self.db_manager:
+                db_health = await self.db_manager.get_database_health()
+                if not db_health.get('connected', False):
+                    logger.error("Database connection unhealthy")
+                    self.system_healthy = False
+            
+        except Exception as e:
+            logger.error(f"Error in health checks: {e}")
+            self.system_healthy = False
+    
+    def _register_shutdown_handlers(self) -> None:
+        """Register signal handlers for graceful shutdown."""
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, initiating shutdown...")
+            self._shutdown_event.set()
+            # Don't create task here - let main loop handle shutdown
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+    
+    async def shutdown(self) -> None:
+        """Gracefully shutdown the system."""
+        logger.info("Shutting down NAVAIR_ADDITIVE system...")
+        
+        self._shutdown_event.set()
+        
+        # Stop API server
+        if self.api_server:
+            await self.api_server.stop()
+        
+        # Stop all sensors
+        for sensor_id, sensor in self.sensors.items():
+            try:
+                await sensor.stop_reading()
+                await sensor.disconnect()
+                logger.info(f"Stopped sensor: {sensor_id}")
+            except Exception as e:
+                logger.error(f"Error stopping sensor {sensor_id}: {e}")
+        
+        # Stop database manager
+        if self.db_manager:
+            await self.db_manager.stop_batch_processors()
+        
+        # Stop performance monitor
+        if self.performance_monitor:
+            await self.performance_monitor.stop()
+        
+        # Close database connections
+        await close_database()
+        
+        logger.info("NAVAIR_ADDITIVE system shutdown complete")
+    
+    def get_system_status(self) -> dict:
+        """Get overall system status."""
+        sensor_status = {}
+        for sensor_id, sensor in self.sensors.items():
+            sensor_status[sensor_id] = {
+                'connected': sensor.is_connected,
+                'status': sensor.status.value,
+                'health': sensor.health.__dict__
+            }
+        
+        return {
+            'system_healthy': self.system_healthy,
+            'startup_complete': self.startup_complete,
+            'sensors': sensor_status,
+            'database_connected': self.db_manager is not None,
+            'api_server_running': self.api_server is not None and self.api_server.is_running()
+        }
+
+
+async def main():
+    """Main entry point."""
+    # Setup logging
+    settings = get_settings()
+    setup_logging(
+        log_level=settings.log_level,
+        log_dir=settings.logs_dir,
+        enable_console=True,
+        enable_file=True
+    )
+    
+    logger.info("Starting NAVAIR_ADDITIVE Machine Health Monitoring System")
+    logger.info(f"Version: {settings.app_version}")
+    logger.info(f"Environment: {settings.environment}")
+    
+    # Create and run application
+    app = NAVAIRAdditive()
+    
+    try:
+        # Initialize system
+        if not await app.initialize():
+            logger.error("Failed to initialize system")
+            sys.exit(1)
+        
+        # Start system
+        await app.start()
+        
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by user")
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}")
+        sys.exit(1)
+    finally:
+        await app.shutdown()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
