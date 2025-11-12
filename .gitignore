@@ -45,3 +45,20 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Log rotation files
+*.log.*
+
+# Database temp files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Environment files (contains secrets)
+.env
+
+# Temporary files
+*.tmp
+*.temp
+*.pid
+.lgd-*
