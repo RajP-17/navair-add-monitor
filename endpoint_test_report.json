@@ -1,0 +1,337 @@
+{
+  "timestamp": "2025-11-24T18:57:04.699241",
+  "base_url": "http://localhost:8000",
+  "summary": {
+    "total": 29,
+    "passed": 24,
+    "failed": 2,
+    "warnings": 3
+  },
+  "results": [
+    {
+      "endpoint": "/api/health",
+      "description": "Basic health check",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.020515,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/system/status",
+      "description": "Overall system status",
+      "method": "GET",
+      "status": "FAIL",
+      "http_code": null,
+      "response_time": null,
+      "has_data": false,
+      "missing_keys": [],
+      "error": "Request timeout (>10s)"
+    },
+    {
+      "endpoint": "/api/system/health",
+      "description": "Comprehensive system health",
+      "method": "GET",
+      "status": "FAIL",
+      "http_code": null,
+      "response_time": null,
+      "has_data": false,
+      "missing_keys": [],
+      "error": "Request timeout (>10s)"
+    },
+    {
+      "endpoint": "/api/system/performance",
+      "description": "System performance metrics",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.999297,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/system/alerts?limit=20",
+      "description": "System alerts (CRITICAL - was returning 500)",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.012394,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/sensors/current",
+      "description": "Current sensor readings",
+      "method": "GET",
+      "status": "WARN",
+      "http_code": 200,
+      "response_time": 0.638338,
+      "has_data": true,
+      "missing_keys": [
+        "sensors"
+      ],
+      "error": "Missing keys: sensors"
+    },
+    {
+      "endpoint": "/api/sensor_data/laser_array",
+      "description": "Laser array data (FIXED - ADC values)",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.222186,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/print/status",
+      "description": "Current print job status",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.039328,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/print/temperatures",
+      "description": "Printer temperatures (may be 503 if offline)",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.066877,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/print/materials",
+      "description": "Loaded materials",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.372179,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/quality/current",
+      "description": "Current quality prediction",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 4.751798,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/quality/fmea",
+      "description": "FMEA analysis",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.664011,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/quality/material_efficiency",
+      "description": "Material efficiency metrics",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 1.401732,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/quality/metrics",
+      "description": "Quality metrics summary",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.233302,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/correlation",
+      "description": "Sensor correlation analysis",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 1.81052,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/anomalies",
+      "description": "Anomaly detection",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 3.10483,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/prediction",
+      "description": "Prediction accuracy",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 3.006991,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/process_capability",
+      "description": "Process capability (Cpk)",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.040342,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/ml_insights",
+      "description": "ML model insights",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.275883,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/ml_performance_history",
+      "description": "ML performance history",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.01109,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/analytics/risk_assessment",
+      "description": "Risk assessment",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 3.682256,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/maintenance/schedule",
+      "description": "Maintenance schedule",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.012823,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/maintenance/calibration_history",
+      "description": "Calibration history",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.004353,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/safety/current",
+      "description": "Current safety status",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 1.124572,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/defects/monitoring-status",
+      "description": "Defect monitoring status",
+      "method": "GET",
+      "status": "WARN",
+      "http_code": 200,
+      "response_time": 0.095711,
+      "has_data": true,
+      "missing_keys": [
+        "enabled"
+      ],
+      "error": "Missing keys: enabled"
+    },
+    {
+      "endpoint": "/api/defects/summary",
+      "description": "Defect summary",
+      "method": "GET",
+      "status": "WARN",
+      "http_code": 200,
+      "response_time": 0.042663,
+      "has_data": true,
+      "missing_keys": [
+        "total_defects"
+      ],
+      "error": "Missing keys: total_defects"
+    },
+    {
+      "endpoint": "/api/defects/active",
+      "description": "Active defects",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.030464,
+      "has_data": false,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/defects/history?hours=24",
+      "description": "Defect history",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.028213,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    },
+    {
+      "endpoint": "/api/jobs/active",
+      "description": "Active print jobs",
+      "method": "GET",
+      "status": "PASS",
+      "http_code": 200,
+      "response_time": 0.114402,
+      "has_data": true,
+      "missing_keys": [],
+      "error": null
+    }
+  ]
+}
